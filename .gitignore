@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# bun
+.bun/
+
+# env / secrets — NEVER commit
+.env
+.env.*
+!.env.example
+
+# per-machine credential profiles (the WHERE zone — never in git)
+.atomic/
+*.profile.toml
+
+# medplum local data
+infra/medplum-data/
+
+# logs / audit (local runtime artifacts)
+*.log
+audit/
+
+# seed scratch
+seed-output/
+synthea-output/
+
+# os
+.DS_Store

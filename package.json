@@ -1,0 +1,25 @@
+{
+  "name": "atomic-healthcare",
+  "version": "0.1.0",
+  "description": "Open-source control plane for agentic healthcare — the safe, human-supervised boundary between AI agents and systems of record.",
+  "license": "MIT",
+  "type": "module",
+  "module": "src/index.ts",
+  "private": true,
+  "scripts": {
+    "cli": "bun run src/cli.ts",
+    "medplum:up": "docker compose -f infra/docker-compose.yml up -d",
+    "medplum:down": "docker compose -f infra/docker-compose.yml down",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "build": "bun build src/cli.ts --compile --outfile dist/atomic"
+  },
+  "dependencies": {
+    "@medplum/core": "^4.0.0",
+    "@medplum/fhirtypes": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.0"
+  }
+}
