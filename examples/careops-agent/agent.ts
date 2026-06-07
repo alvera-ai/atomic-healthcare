@@ -6,12 +6,12 @@
  */
 
 import { voice } from "@livekit/agents";
-import { careopsTools } from "./tools.ts";
+import { type CallState, careopsTools } from "./tools.ts";
 
 export const AGENT_NAME = "careops-inbound";
 
 export class CareOpsAgent extends voice.Agent {
-  constructor() {
+  constructor(callState: CallState) {
     const today = new Date().toISOString().slice(0, 10);
     super({
       instructions: `You are CareOps Voice, an after-hours care-operations assistant. Today's date is ${today}.
@@ -46,7 +46,7 @@ Flow:
 7. Always finish by clearly confirming the appointment date and time.
 
 Rules: never give medical advice; never invent clinical facts (use only what get_patient_chart returns); never open a record below 0.90 confidence; never call resolve_patient before the caller has confirmed their details; never state an appointment you didn't get from book_appointment or create_priority_appointment. If the caller declines to share something, don't argue — a first name plus a phone number is enough to find them.`,
-      tools: careopsTools(),
+      tools: careopsTools(callState),
     });
   }
 }

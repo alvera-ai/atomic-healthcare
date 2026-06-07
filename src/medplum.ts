@@ -11,7 +11,7 @@
  * token exchange at most once.
  */
 
-import type { Appointment, Bundle, Coverage, Patient, Slot } from "@medplum/fhirtypes";
+import type { Appointment, Bundle, Communication, Coverage, Patient, Slot } from "@medplum/fhirtypes";
 import { chartToMossDocs } from "./chart-to-moss.ts";
 import type { MossDoc } from "./moss-doc.ts";
 
@@ -369,5 +369,31 @@ export class MedplumClient {
       comment: "After-hours overflow (managed-care priority)",
     });
     return this.bookAppointment(patientId, slot.id ?? "");
+  }
+
+  /** Write the call transcript to the patient's chart as a FHIR Communication. */
+  async logCallSummary(patientId: string, transcript: string): Promise<string> {
+    const c = await this.fhirCreate<Communication>({
+      resourceType: "Communication",
+      status: "completed",
+      subject: { reference: `Patient/${patientId}` },
+      sent: new Date().toISOString(),
+      category: [
+        {
+          text: "CareOps Voice call",
+          coding: [{ system: "http://terminology.hl7.org/CodeSystem/communication-category", code: "notification" }],
+        },
+      ],
+      medium: [
+        {
+          coding: [
+            { system: "http://terminology.hl7.org/CodeSystem/v3-ParticipationMode", code: "PHONE", display: "telephone" },
+          ],
+        },
+      ],
+      topic: { text: "After-hours CareOps Voice call transcript" },
+      payload: [{ contentString: transcript }],
+    });
+    return c.id ?? "";
   }
 }

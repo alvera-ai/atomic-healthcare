@@ -21,7 +21,9 @@ import {
 } from "@livekit/agents";
 import * as silero from "@livekit/agents-plugin-silero";
 import dotenv from "dotenv";
+import { MedplumClient, settingsFromEnv } from "../../src/medplum.ts";
 import { CareOpsAgent } from "./agent.ts";
+import type { CallState } from "./tools.ts";
 
 dotenv.config();
 
@@ -55,7 +57,31 @@ export default defineAgent<ProcessUserData>({
       turnHandling: { interruption: { minWords: 2 } },
     });
 
-    await session.start({ agent: new CareOpsAgent(), room: ctx.room });
+    // Shared per-call state: tools record the resolved patientId here so we can write
+    // the transcript to the right chart when the call ends.
+    const callState: CallState = {};
+
+    // When the call ends (hangup/shutdown), write the full transcript to the patient's
+    // chart as a FHIR Communication.
+    ctx.addShutdownCallback(async () => {
+      if (!callState.patientId) return;
+      const lines = session.history.items
+        .map((it) => it as { role?: string; textContent?: string })
+        .filter((it) => it.role === "user" || it.role === "assistant")
+        .map((it) => `${it.role === "user" ? "Caller" : "Agent"}: ${(it.textContent ?? "").trim()}`)
+        .filter((l) => !l.endsWith(":"));
+      if (lines.length === 0) return;
+      const transcript = `CareOps Voice call — ${new Date().toISOString()}\n\n${lines.join("\n")}`;
+      try {
+        const medplum = new MedplumClient(settingsFromEnv());
+        const id = await medplum.logCallSummary(callState.patientId, transcript);
+        console.error(`[call-summary] wrote Communication/${id} for Patient/${callState.patientId}`);
+      } catch (err) {
+        console.error(`[call-summary] failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    });
+
+    await session.start({ agent: new CareOpsAgent(callState), room: ctx.room });
     await ctx.connect();
     await session.generateReply({
       instructions:

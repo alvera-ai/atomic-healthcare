@@ -12,7 +12,12 @@ import { WatchmanClient, watchmanSettingsFromEnv } from "../../src/watchman.ts";
 
 const CONFIDENCE_GATE = 0.9;
 
-export function careopsTools() {
+/** Shared per-call state — lets main.ts write the transcript to the right patient on hangup. */
+export interface CallState {
+  patientId?: string;
+}
+
+export function careopsTools(callState: CallState = {}) {
   const medplum = new MedplumClient(settingsFromEnv());
   const moss = new MossClient(mossSettingsFromEnv());
   const watchman = new WatchmanClient(watchmanSettingsFromEnv());
@@ -39,6 +44,7 @@ export function careopsTools() {
           return { matched: false, message: "No patient found. Offer to register the caller as a new patient." };
         }
         const confident = top.confidence >= CONFIDENCE_GATE;
+        if (confident) callState.patientId = top.patientId;
         return {
           matched: confident,
           confidence: Number(top.confidence.toFixed(2)),
@@ -88,6 +94,7 @@ export function careopsTools() {
           birthDate,
           phone,
         });
+        callState.patientId = patientId;
         return { created: true, patientId, note: "New patient — no chart history yet." };
       },
     }),
