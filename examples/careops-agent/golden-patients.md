@@ -55,18 +55,20 @@ TS
 
 **Script:** *"Hi, this is Carla Ramón, December 23rd 1987. I've had bad chest tightness
 since this morning and I need to be seen."* (give phone if it asks for a tie-breaker)
+When the agent offers an after-hours slot and asks your earliest time, say
+*"the earliest I can come is 6 PM."*
 
 **Expected agent behavior**
 1. `resolve_patient` → **≥0.90** (name+DOB, phone if needed) → "found your record".
 2. `get_patient_chart` + `get_coverage` → coverage = **Managed Care**; caller states acute symptoms → judged **SICK**.
 3. `find_earliest_appointment(patientId, 0)` → **no slot** (Steuber cleared).
-4. `create_priority_appointment(patientId)` → creates an **after-5pm** Slot on Steuber's schedule and books it.
-5. Tells Carla she's fit in after hours, with the date/time.
+4. Asks the earliest evening time the caller can make → `create_priority_appointment(patientId, requestedHour: 18)` → creates an **18:00** Slot on Steuber's schedule and books it.
+5. Tells Carla she's fit in after hours at **6 PM**, with the date.
 6. On hangup → `Communication` written to her chart.
 
-**PASS if:** a new Slot exists at **17:00** on Steuber's schedule with status `busy`,
-an `Appointment` (status booked) links Carla + Steuber to it, and a `Communication`
-holds the transcript.
+**PASS if:** a new Slot exists at **18:00** (the requested 6 PM; defaults to 17:00 if
+no time given) on Steuber's schedule with status `busy`, an `Appointment` (status
+booked) links Carla + Steuber to it, and a `Communication` holds the transcript.
 
 ---
 

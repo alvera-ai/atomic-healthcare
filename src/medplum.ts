@@ -348,16 +348,23 @@ export class MedplumClient {
    * Managed-care guarantee: when no free slot is available, create an extra slot
    * after 5 PM on the patient's PCP schedule (next weekday) and book it.
    */
-  async createPrioritySlotAndBook(patientId: string): Promise<{ appointmentId: string; start: string } | null> {
+  async createPrioritySlotAndBook(
+    patientId: string,
+    opts: { hour?: number } = {},
+  ): Promise<{ appointmentId: string; start: string } | null> {
     const practitionerId = await this.getPrimaryPractitionerId(patientId);
     if (!practitionerId) return null;
     const scheduleId = (await this.scheduleIdsFor(practitionerId))[0];
     if (!scheduleId) return null;
 
+    // Overflow is AFTER regular hours (clinic ends at 5 PM). Honor a caller's
+    // requested hour but keep it in the after-hours band [17:00, 20:00].
+    const hour = Math.min(20, Math.max(17, Math.round(opts.hour ?? 17)));
+
     const start = new Date();
     start.setDate(start.getDate() + 1);
     while (start.getDay() === 0 || start.getDay() === 6) start.setDate(start.getDate() + 1);
-    start.setHours(17, 0, 0, 0); // 5:00 PM overflow
+    start.setHours(hour, 0, 0, 0); // after-hours overflow (≥ 5 PM)
     const end = new Date(start.getTime() + 30 * 60_000);
 
     const slot = await this.fhirCreate<Slot>({

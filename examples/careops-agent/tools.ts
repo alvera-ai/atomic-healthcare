@@ -171,10 +171,14 @@ export function careopsTools(callState: CallState = {}) {
     /** Managed-care guarantee: create an after-5pm overflow slot and book it. */
     create_priority_appointment: llm.tool({
       description:
-        "Managed-care guarantee for a SICK managed-care patient when find_earliest_appointment found nothing acceptable: create an extra after-5pm slot on the patient's PCP schedule and book it. Use only in that case.",
-      parameters: z.object({ patientId: z.string() }),
-      execute: async ({ patientId }) => {
-        const r = await medplum.createPrioritySlotAndBook(patientId);
+        "Managed-care guarantee for a SICK managed-care patient when find_earliest_appointment found nothing acceptable: create an extra after-hours slot (5 PM or later) on the patient's PCP schedule and book it. Use only in that case. " +
+        "If the caller said the earliest they can come is a specific evening time, pass requestedHour (24-hour, e.g. 18 for 6 PM); it is clamped to the 5–8 PM after-hours band.",
+      parameters: z.object({
+        patientId: z.string(),
+        requestedHour: z.number().optional().describe("Caller's earliest after-hours time as a 24-hour hour (17=5pm, 18=6pm, 19=7pm). Omit to default to 5 PM."),
+      }),
+      execute: async ({ patientId, requestedHour }) => {
+        const r = await medplum.createPrioritySlotAndBook(patientId, { hour: requestedHour });
         return r
           ? { booked: true, start: r.start, appointmentId: r.appointmentId }
           : { booked: false, message: "No assigned PCP/schedule to add an overflow slot to." };

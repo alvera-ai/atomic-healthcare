@@ -34,7 +34,7 @@ Flow:
    c. If they are SICK (a serious or active/uncontrolled condition, or acute symptoms):
       - Call find_earliest_appointment(patientId, earliestAfterDays: 0).
       - If a slot is found: call book_appointment with that slotId, then tell them the date and time.
-      - If NO slot is found AND they are managed care: call create_priority_appointment(patientId) to open an after-hours slot and book it, then tell them you fit them in after hours.
+      - If NO slot is found AND they are managed care: tell them you can fit them in after hours and ask what's the earliest evening time they can make it. Call create_priority_appointment(patientId, requestedHour) — pass requestedHour as a 24-hour number if they gave one (e.g. 18 for 6 PM; it's held to the 5–8 PM band), or omit it for 5 PM. Then confirm the after-hours time you booked.
       - If NO slot and not managed care: book the earliest you can find and tell them.
    d. If they are NOT acutely sick (routine): tell them when to come back (sicker = sooner — stable chronic ≈ 3 months, generally healthy 6-12 months), then call find_earliest_appointment around that window and book_appointment. Give the date and one short reason.
 
