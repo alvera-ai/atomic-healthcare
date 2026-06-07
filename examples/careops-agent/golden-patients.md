@@ -1,9 +1,15 @@
-# CareOps Voice — demo evals
+# CareOps Voice — golden patients
 
-Three calls that exercise the agent end to end: **identify → chart → book → log**.
-Run the worker, place the call in the LiveKit Console / Agents Playground (agent
-`atomic-healthcare-frontdesk`), speak the script, and check it against the
-expectations below.
+A fixed set of known callers — **golden patients** — for testing the agent over the
+phone. Each is a real seeded patient (except the new-patient case, which is a name
+that isn't seeded) with a script and the behavior the agent should produce. Dial each
+into the LiveKit Console / Agents Playground (agent `atomic-healthcare-frontdesk`) or
+by phone, speak the script, and check against the expectations. Together they cover
+the whole loop: **identify → chart → book → log**.
+
+> **Adding a golden patient:** pick a seeded patient, note their coverage + acuity
+> (lookup snippet at the bottom), choose the branch to exercise (sick / routine /
+> managed-care overflow / new), and write the expected tool trace + pass criteria.
 
 ```bash
 LIVEKIT_AGENT_NAME=atomic-healthcare-frontdesk make run-careops-agent
@@ -19,10 +25,9 @@ and on hangup `[call-summary] wrote Communication/<id>`.
 `Communication?subject=Patient/<id>`.
 
 ### Two seed caveats (set up before testing)
-- **Slots only span the next ~2 weeks** (10 weekdays, 9–12 & 2–5). Eval 3's 15-day
-  block-out lands past that horizon → no slot. To test it, extend the horizon: in
-  `scripts/seed.ts` bump `upcomingWeekdays(10)` → `upcomingWeekdays(40)` and re-run
-  the scheduling step (or accept "no slot in window" as the observed outcome).
+- **Slots span the next ~6 weeks** (`SCHEDULE_DAYS=30` weekdays, 9–12 & 2–5 in
+  `scripts/seed.ts`) — enough headroom for the 15-day new-patient block-out and
+  routine bookings.
 - **Overflow (eval 1) only fires when the PCP has no free slot.** With seeded slots
   there's always one, so the setup step below clears the PCP's free slots first.
 
@@ -95,8 +100,7 @@ and logs the transcript.
 **Caller:** a name **not** in the cohort, e.g. *"Marcus Webb, May 20th 1980,
 555-018-2244"*, who says they have **Medicare** (fee-for-service).
 
-**Setup:** to actually book at +15 days, extend the slot horizon (see caveat above);
-otherwise expect "no slot that far out" as the observed result.
+**Setup:** none — slots span ~6 weeks, so +15 days has availability.
 
 **Script:** *"Hi, my name's Marcus Webb, born May 20th 1980."* → (agent can't find
 a record, asks for more, still no match) → agrees to register → gives phone →
@@ -127,3 +131,27 @@ call won't resolve them yet (documented; deferred).
 | 1 | Managed-care sick | ≥0.90 | SICK | **overflow** after-5pm slot | ✓ |
 | 2 | Existing routine | ≥0.90 | not sick | routine slot / recommendation | ✓ |
 | 3 | New FFS | no match → register | n/a (new) | book **≥15 days** out | ✓ (new chart) |
+
+---
+
+## Appendix — look up a patient to add as a golden patient
+
+Lists each living patient with DOB, phone, coverage, PCP, and serious active
+conditions (to pick the acuity branch you want):
+
+```bash
+bun run - <<'TS'
+import { MedplumClient } from "@medplum/core";
+const m = new MedplumClient({ baseUrl: "http://localhost:8103/", fetch });
+await m.startClientLogin(process.env.MEDPLUM_CLIENT_ID!, process.env.MEDPLUM_CLIENT_SECRET!);
+const serious = /cancer|kidney|diabet|heart|failure|copd|stroke|metabolic|hypertension|alzheimer/i;
+for (const p of (await m.searchResources("Patient", { _count: "50" })) as any[]) {
+  if (p.deceasedDateTime || p.deceasedBoolean) continue;
+  const cov = (await m.searchResources("Coverage", { beneficiary: `Patient/${p.id}` }))[0] as any;
+  const conds = (await m.searchResources("Condition", { patient: `Patient/${p.id}`, "clinical-status": "active", _count: "50" })) as any[];
+  const sick = [...new Set(conds.map(c => c.code?.text ?? c.code?.coding?.[0]?.display).filter(Boolean))].filter(l => serious.test(l));
+  const nm = p.name?.[0];
+  console.log(`${nm?.given?.join(" ")} ${nm?.family} | DOB ${p.birthDate} | ${p.telecom?.find((t:any)=>t.system==="phone")?.value} | ${cov?.type?.text ?? "?"} | PCP ${p.generalPractitioner?.[0]?.display ?? "-"} | serious:${sick.length}`);
+}
+TS
+```
