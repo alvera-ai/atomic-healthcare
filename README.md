@@ -1,102 +1,152 @@
 # Atomic Healthcare
 
-> An open-source **control plane for agentic healthcare**. A voice agent does real
-> clinical operations — verify a patient, check coverage, book, escalate, call a
-> patient back — but it **never holds a credential** and **never acts unseen**.
-> Every action is a typed verb routed through a safe boundary into a system of
-> record, logged, attributable, and replayable. Risky actions pause for a **human
-> overlord** who watches a live feed and approves or denies.
+> **Not one piece of software — a collection of small ones.** All TypeScript,
+> each doing one job, that together let **AI agents work *with* humans to solve
+> healthcare problems**.
 
-It is the safety layer that makes AI agents on protected health information (PHI)
-deployable: **security, human control, and an audit trail** — without rebuilding
-the legacy EHR.
-
-## Why this exists
-
-Three real, named problems in healthcare:
-
-- **Information blocking** (21st Century Cures Act / ONC) — data is locked away.
-- **Non-API legacy systems** — Epic, Athena, and friends don't expose clean APIs.
-- **Agent oversight** — nobody will let an AI act on a patient record unsupervised.
-
-Atomic Healthcare answers all three with one idea: **the agent never touches a
-credential and never acts unseen.** It calls *verbs*; a credential-holding
-boundary executes them against the system of record and shows a human everything.
-
-## The three pieces
-
-```
-   Caller ──voice──▶ LiveKit agent
-                          │ imports the VERB LIBRARY (in-process, no creds)
-                          │ every verb → audit log + policy gate
-            ┌─────────────┼──────────────────┐
-            ▼             ▼                  ▼
-       knowledge      SYSTEM OF RECORD   CONTROL PANE
-       (Moss, bonus)  (Medplum adapter)  (human overlord:
-                       deterministic      live feed + approve/deny)
+```mermaid
+flowchart LR
+  Caller(["📞 Patient"]) -- voice --> Agent["🎙️ AI agent (TS · LiveKit)"]
+  Agent -- "who? (thin wrapper)" --> WM["🪪 Watchman"]
+  Agent -- "record R/W (thin wrapper)" --> Med[("🗄️ Medplum")]
+  Agent -- "knowledge (thin wrapper)" --> Moss["🧠 Moss"]
+  CLI(["🔧 atomic-healthcare CLI"]) -. configure · load knowledge · launch .-> Agent
+  Med -. review / act .- Staff(["🧑 Clinic staff"])
 ```
 
-1. **Verb library** — the credential boundary. Holds the secrets, reads a profile
-   written once by `configure`, exposes typed verbs. The agent imports it; the CLI
-   imports it. Neither the agent nor a human caller ever sees a token.
-2. **System-of-record adapter** — a pluggable interface. **Medplum** is the first
-   adapter (works locally via Docker, deterministic FHIR). Others (Epic, Athena)
-   slot in behind the same interface.
-3. **Control pane** — the human overlord. A live feed of every verb the agent
-   invokes; write-class actions (`book`, `escalate`, `call-patient`) pause for
-   explicit human approve / deny.
+## The moving parts
 
-## Architecture in one rule
+The agent and everything it touches are TypeScript. The agent's tools call **thin,
+in-process wrappers** — no MCP, no HTTP tool server in between. Each wrapper
+exposes only a **limited set of operations**, and that limited surface *is* the
+safety boundary: the agent can't do arbitrary FHIR, only what a wrapper allows.
 
-> **WHAT** the agent wants (a verb + args) is separate from **WHERE** the
-> credentials live (a per-machine profile). The agent supplies the first and
-> never sees the second. Every action crosses the boundary and lands in the
-> audit log.
-
-## System of record: Medplum (the demo adapter)
-
-Medplum is used as the demo system of record because it runs fully locally:
-
-```
-   Server:    http://localhost:8103
-   Admin UI:  http://localhost:3005
-   Login:     admin@example.com / medplum_admin   (Medplum default seed)
+```mermaid
+flowchart TB
+  subgraph AG["🎙️ careops-agent — TypeScript · LiveKit Agents"]
+    Pipe["STT → LLM → TTS · LiveKit Inference"]
+    Tools["llm.tool(...) — in-process calls"]
+  end
+  subgraph W["thin wrappers (in-process · limited API)"]
+    MEDW["Medplum wrapper<br/>on @medplum/core"]
+    WMW["Watchman wrapper<br/>over HTTP"]
+    MOSSW["Moss wrapper<br/>on @moss-dev/moss SDK"]
+  end
+  Tools --> MEDW --> Med[("🗄️ Medplum")]
+  Tools --> WMW --> WM["🪪 Watchman"]
+  Tools --> MOSSW --> Moss["🧠 Moss"]
 ```
 
-The Medplum adapter wraps `@medplum/core` — typed FHIR, auth handled. It is an
-**adapter**, not the core: the verb library talks to an `SoRAdapter` interface,
-and Medplum is one implementation.
+| Part | How it connects | Role |
+| --- | --- | --- |
+| 🎙️ **careops-agent** | TypeScript · LiveKit Agents (WebRTC / SIP) · LiveKit Inference | talks to the patient; STT → LLM → TTS, no provider key |
+| 🗄️ **Medplum wrapper** | thin class on **`@medplum/core`** (`MedplumClient`), **in-process** | the FHIR system of record: verify/read patient, coverage, find & book appointments, tasks, call summaries — **only these operations**, not the whole API |
+| 🪪 **Watchman wrapper** | thin **HTTP** call, in-process | identity: caller → **one** Patient id (≥85% match) or refuse |
+| 🧠 **Moss wrapper** | thin class on **`@moss-dev/moss`** SDK, in-process | the knowledge base: contracts, past denials, recent CMS judgements, HEDIS gotchas (load index once, query locally) |
+| 🔧 **atomic-healthcare CLI** | TypeScript | operator toolkit: load knowledge → Moss, build the identity index → Watchman, seed, and launch the agent with secrets injected |
 
-## Quick start
+No MCP and no Hono tool server: the agent calls the wrappers as plain function
+calls. `@medplum/core` handles the Medplum bearer (client-credentials) and its
+refresh for us. The real guard rails are the **wrapper's limited API** plus
+Medplum's server-side **AccessPolicy**. Swap any wrapper without touching the rest.
+
+## What becomes possible
+
+With verified context and the rules handled for it, the routine 90% runs itself
+and a human partners on the hard 10%:
+
+- verify a caller and open the right record — **only theirs**
+- ground answers in the **actual contract**, not a guess
+- book, reschedule, escalate — risky ones reviewed by staff in Medplum
+
+## The blockers it removes
+
+```mermaid
+flowchart TB
+  X1["🐌 APIs slow & costly<br/>→ cache, batch, route around"]
+  X2["🏥 Legacy EMRs reject cloud SaaS<br/>→ run next to the record"]
+  X3["🤝 Last 10% needs a human<br/>→ staff review unlocks the 90%"]
+  X4["📵 Only ~20% use portals<br/>→ the other 80% call by phone"]
+```
+
+## Architecture
+
+```mermaid
+flowchart TB
+  Caller(["📞 Patient"])
+  Staff(["🧑 Clinic staff"])
+
+  subgraph Setup["SETUP — human, occasional (atomic-healthcare CLI)"]
+    Know["📚 load knowledge → Moss<br/>(contracts + CMS judgements)"]
+    Ident["🪪 build identity index → Watchman<br/>(FHIR → Senzing, by Patient id)"]
+  end
+
+  subgraph Runtime["RUNTIME — per call, warm TypeScript worker"]
+    AG["🎙️ careops-agent (TS · LiveKit)<br/>STT → LLM → TTS"]
+    MEDW["Medplum wrapper (@medplum/core)"]
+    WMW["Watchman wrapper (HTTP)"]
+    MOSSW["Moss wrapper (SDK)"]
+    AG --> MEDW
+    AG --> WMW
+    AG --> MOSSW
+  end
+
+  Med[("🗄️ Medplum — FHIR")]
+  WM["🪪 Watchman — identity"]
+  Moss["🧠 Moss — knowledge base"]
+
+  Know -- ingest --> Moss
+  Ident -- ingest --> WM
+  Caller -- voice --> AG
+  MEDW -- "@medplum/core · Bearer" --> Med
+  WMW -- "HTTP" --> WM
+  MOSSW -- "SDK" --> Moss
+  Staff -. work in (admin / provider UI) .- Med
+```
+
+**Credentials** are injected at launch, never hardcoded and never a committed
+`.env` in source. `@medplum/core` authenticates with the Medplum **ClientApplication**
+(client-credentials) and refreshes the bearer itself; Moss and Watchman use static
+keys. What the agent may do is bounded by the **wrapper's limited API** and
+Medplum's server-side **AccessPolicy**.
+
+## Run it
+
+**Prerequisites:** Bun · Docker · native PostgreSQL (`:5432`) · native Redis (`:6379`).
+First-time host setup (Redis password, `medplum` database) is in
+[`docs/getting-started.md`](./docs/getting-started.md).
 
 ```bash
 bun install
-
-# 1. start the system of record (local Medplum)
-bun run medplum:up
-
-# 2. point a profile at it (writes ~/.atomic/<profile>.toml — gitignored)
-bun run cli configure
-
-# 3. seed a clean demo cohort (Synthea, human names, scheduling scaffold)
-bun run cli seed-patients
-
-# 4. drive verbs from the terminal
-bun run cli verify-patient --name "Dorothy Harmon" --dob 1948-07-22
+make run-backing-services            # Medplum API :8103 · admin UI :3005 · Watchman :8084
+atomic-healthcare ingest-knowledge   # contracts + recent CMS judgements → Moss
+make seed                            # demo cohort → Medplum + Watchman (identity)
+make run-careops-agent               # launch the agent (secrets injected at launch)
 ```
 
-The voice agent and control pane import the same verb library — see
-[`AGENTS.md`](./AGENTS.md) for the build conventions.
+The clinician/front-office UI (Medplum's provider app) runs alongside for human
+review — see [`docs/getting-started.md`](./docs/getting-started.md).
 
-## Status
+## Examples
 
-| Layer | State |
-|------|-------|
-| Medplum adapter (`@medplum/core`) | scaffolding |
-| Verb library + profile + audit | scaffolding |
-| Control pane (human overlord) | planned |
-| LiveKit voice (in + outbound) | planned |
-| Moss + Unsiloed (contract knowledge) | bonus |
+| Example | What it is |
+| --- | --- |
+| [`careops-agent`](./examples/careops-agent) | CareOps Voice — after-hours managed-care intake. TypeScript · LiveKit · Medplum (`@medplum/core`) · Watchman · Moss. |
+
+## Principles
+
+1. **A constellation, not a monolith.** Small TypeScript components, each doing one
+   job — swap one without touching the rest.
+2. **The wrapper is the boundary.** The agent only reaches a service through a thin
+   wrapper with a limited API — plus Medplum's server-side AccessPolicy.
+3. **Identity gates access.** No record opens until Watchman confirms the caller.
+4. **Knowledge grounds decisions.** Coverage comes from contracts in Moss, not the
+   model's imagination.
+5. **The record is pluggable.** FHIR is the reference; any EMR slots in behind it.
+6. **Humans own the edge.** Routine flows are autonomous; risky writes are
+   reviewed by staff in Medplum.
+
+Conventions: [`AGENTS.md`](./AGENTS.md).
 
 ## License
 

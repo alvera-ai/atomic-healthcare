@@ -1,0 +1,20 @@
+{
+  "port": 8103,
+  "baseUrl": "http://localhost:8103/",
+  "appBaseUrl": "http://localhost:3005/",
+  "storageBaseUrl": "http://localhost:8103/storage/",
+  "binaryStorage": "file:./binary/",
+  "allowedOrigins": "*",
+  "database": {
+    "host": "host.docker.internal",
+    "port": 5432,
+    "dbname": "medplum",
+    "username": "medplum",
+    "password": "medplum"
+  },
+  "redis": {
+    "host": "host.docker.internal",
+    "port": 6379,
+    "password": "medplum"
+  }
+}

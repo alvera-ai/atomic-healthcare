@@ -1,0 +1,75 @@
+# Local backing services for Atomic Healthcare.
+#
+# Two containers only: the identity index (Watchman) and the system of record
+# (Medplum). PostgreSQL and Redis run NATIVELY on the host; Medplum reaches them
+# via host.docker.internal. A mail catcher is available but opt-in.
+#
+#   make run-backing-services                # watchman + medplum
+#   make run-backing-services PROFILE=mail   # + mailpit, if a flow needs email
+
+services:
+  # Identity index — fuzzy "spoken name → Patient id". Peer-reviewed sanctions
+  # matcher repurposed as an EMPI.
+  watchman:
+    image: moov/watchman:v0.61.1
+    restart: unless-stopped
+    ports:
+      - "8084:8084"
+
+  # System of record — FHIR R4. Config is a mounted file (Medplum's canonical
+  # local setup); it points DB + Redis at the host's native Postgres/Redis via
+  # host.docker.internal. See config/medplum.config.json.
+  medplum:
+    image: medplum/medplum-server:5.1.15   # pinned for reproducible local runs
+    restart: unless-stopped
+    ports:
+      - "8103:8103"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # native pg/redis, also on Linux
+    # Entrypoint is `node … index.js`; this arg tells it to read the JSON config.
+    command: ["file:medplum.config.json"]
+    volumes:
+      - ./config/medplum.config.json:/usr/src/medplum/medplum.config.json:ro
+      - medplum_binary:/usr/src/medplum/binary   # uploaded binaries persist
+    # Node 24 has global fetch; no curl in the image. Generous start_period so
+    # first-boot migrations don't trip it.
+    healthcheck:
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "fetch('http://localhost:8103/healthcheck').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+
+  # Web UI — the Medplum app (React SPA served by nginx). The public image is
+  # built with its API URL baked to http://localhost:8103/, which matches our
+  # server, so it needs no config. Served on :3005 (our appBaseUrl); CORS is
+  # handled by the server's allowedOrigins:"*".
+  medplum-app:
+    image: medplum/medplum-app:5.1.15   # pinned to match the server
+    restart: unless-stopped
+    depends_on:
+      medplum:
+        condition: service_healthy
+    ports:
+      - "3005:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional mail catcher — off by default. Bring up with PROFILE=mail.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    profiles: ["mail"]
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  medplum_binary:   # Medplum binary storage (file:./binary/), survives recreate
