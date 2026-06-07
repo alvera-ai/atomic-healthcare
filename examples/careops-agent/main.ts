@@ -64,17 +64,27 @@ export default defineAgent<ProcessUserData>({
     // When the call ends (hangup/shutdown), write the full transcript to the patient's
     // chart as a FHIR Communication.
     ctx.addShutdownCallback(async () => {
-      if (!callState.patientId) return;
-      const lines = session.history.items
-        .map((it) => it as { role?: string; textContent?: string })
-        .filter((it) => it.role === "user" || it.role === "assistant")
-        .map((it) => `${it.role === "user" ? "Caller" : "Agent"}: ${(it.textContent ?? "").trim()}`)
-        .filter((l) => !l.endsWith(":"));
-      if (lines.length === 0) return;
-      const transcript = `CareOps Voice call — ${new Date().toISOString()}\n\n${lines.join("\n")}`;
       try {
+        const itemCount = session.history.items.length;
+        console.error(`[call-summary] shutdown: patientId=${callState.patientId ?? "none"} historyItems=${itemCount}`);
+        if (!callState.patientId) return;
+        const lines = session.history.items
+          .map((it) => it as { role?: string; textContent?: string })
+          .filter((it) => it.role === "user" || it.role === "assistant")
+          .map((it) => `${it.role === "user" ? "Caller" : "Agent"}: ${(it.textContent ?? "").trim()}`)
+          .filter((l) => !l.endsWith(":"));
+        if (lines.length === 0) {
+          console.error("[call-summary] no transcribed turns — nothing to write");
+          return;
+        }
+        const transcript = `CareOps Voice call — ${new Date().toISOString()}\n\n${lines.join("\n")}`;
         const medplum = new MedplumClient(settingsFromEnv());
-        const id = await medplum.logCallSummary(callState.patientId, transcript);
+        // Bound the write so a slow/hung network call can't make the job unresponsive
+        // (LiveKit force-SIGTERMs an unresponsive job and the Communication is lost).
+        const id = await Promise.race([
+          medplum.logCallSummary(callState.patientId, transcript),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("logCallSummary timed out after 10s")), 10_000)),
+        ]);
         console.error(`[call-summary] wrote Communication/${id} for Patient/${callState.patientId}`);
       } catch (err) {
         console.error(`[call-summary] failed: ${err instanceof Error ? err.message : String(err)}`);

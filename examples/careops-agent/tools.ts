@@ -17,6 +17,10 @@ const DEFAULT_BLOCK_OUT_DAYS = 15; // conservative fallback if no benchmark matc
 /** Shared per-call state — lets main.ts write the transcript to the right patient on hangup. */
 export interface CallState {
   patientId?: string;
+  /** The appointment booked this call. Set once; re-used so an interrupted/re-issued
+   *  tool call can't double-book (LiveKit drops a tool's output on interruption and
+   *  the LLM then re-calls it). */
+  booking?: { appointmentId: string; start: string; via: string };
 }
 
 export function careopsTools(callState: CallState = {}) {
@@ -163,7 +167,11 @@ export function careopsTools(callState: CallState = {}) {
       description: "Book a specific open slot for the patient, using the slotId from find_earliest_appointment.",
       parameters: z.object({ patientId: z.string(), slotId: z.string() }),
       execute: async ({ patientId, slotId }) => {
+        if (callState.booking) {
+          return { booked: true, ...callState.booking, note: "Already booked this call — not double-booking." };
+        }
         const r = await medplum.bookAppointment(patientId, slotId);
+        callState.booking = { appointmentId: r.appointmentId, start: r.start, via: "book_appointment" };
         return { booked: true, start: r.start, appointmentId: r.appointmentId };
       },
     }),
@@ -178,10 +186,13 @@ export function careopsTools(callState: CallState = {}) {
         requestedHour: z.number().optional().describe("Caller's earliest after-hours time as a 24-hour hour (17=5pm, 18=6pm, 19=7pm). Omit to default to 5 PM."),
       }),
       execute: async ({ patientId, requestedHour }) => {
+        if (callState.booking) {
+          return { booked: true, ...callState.booking, note: "Already booked this call — not creating another overflow slot." };
+        }
         const r = await medplum.createPrioritySlotAndBook(patientId, { hour: requestedHour });
-        return r
-          ? { booked: true, start: r.start, appointmentId: r.appointmentId }
-          : { booked: false, message: "No assigned PCP/schedule to add an overflow slot to." };
+        if (!r) return { booked: false, message: "No assigned PCP/schedule to add an overflow slot to." };
+        callState.booking = { appointmentId: r.appointmentId, start: r.start, via: "create_priority_appointment" };
+        return { booked: true, start: r.start, appointmentId: r.appointmentId };
       },
     }),
   };
