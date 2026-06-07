@@ -48,12 +48,18 @@ export default defineAgent<ProcessUserData>({
         model: "cartesia/sonic-3",
         voice: "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
       }),
+      // Require ≥2 actually-transcribed words to interrupt the agent. Phone echo /
+      // background noise produces VAD blips but no real words, so this stops the
+      // "resumed false interrupted speech" cut-offs that made replies inaudible.
+      // turnDetection is left unset → the session auto-selects VAD (lightweight).
+      turnHandling: { interruption: { minWords: 2 } },
     });
 
     await session.start({ agent: new CareOpsAgent(), room: ctx.room });
     await ctx.connect();
     await session.generateReply({
-      instructions: "Greet the caller as CareOps Voice and ask for their full name and date of birth.",
+      instructions:
+        "Warmly welcome the caller to CareOps Voice. In one short sentence, explain that to protect their privacy you need to verify their identity before pulling up their record. Then ask for their full name to begin.",
     });
   },
 });
