@@ -58,12 +58,12 @@ export default defineAgent<ProcessUserData>({
   },
 });
 
-// No agentName → the worker auto-joins every room in the project (simplest for
-// Playground testing). Set LIVEKIT_AGENT_NAME to switch to named explicit dispatch.
-const agentName = process.env.LIVEKIT_AGENT_NAME;
+// Stable agent name so the Playground's dispatch always routes to THIS worker
+// (override with LIVEKIT_AGENT_NAME). Keep exactly one worker running for this name.
+const agentName = process.env.LIVEKIT_AGENT_NAME ?? "careops-inbound";
 cli.runApp(
   new ServerOptions({
     agent: fileURLToPath(import.meta.url),
-    ...(agentName ? { agentName } : {}),
+    agentName,
   }),
 );
