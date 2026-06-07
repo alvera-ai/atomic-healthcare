@@ -92,7 +92,8 @@ function extractPatient(reqBundle: Bundle, resBundle: Bundle): SeededPatient | n
   const entries = reqBundle.entry ?? [];
   const idx = entries.findIndex((e) => e.resource?.resourceType === "Patient");
   if (idx < 0) return null;
-  const p = entries[idx].resource as Patient;
+  const p = entries[idx]?.resource as Patient | undefined;
+  if (!p) return null;
   const location = resBundle.entry?.[idx]?.response?.location ?? "";
   const id = location.split("/")[1];
   if (!id) return null;

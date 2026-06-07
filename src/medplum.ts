@@ -11,7 +11,7 @@
  * token exchange at most once.
  */
 
-import type { Bundle } from "@medplum/fhirtypes";
+import type { Bundle, Patient } from "@medplum/fhirtypes";
 import { chartToMossDocs } from "./chart-to-moss.ts";
 import type { MossDoc } from "./moss-doc.ts";
 
@@ -180,6 +180,39 @@ export class MedplumClient {
       indexName: `chart-${patientId}`,
       docs: chartToMossDocs(patientId, bundle),
     };
+  }
+
+  /** Register a brand-new patient (used when Watchman finds no match). Returns the id. */
+  async createPatient(input: {
+    given: string;
+    family: string;
+    birthDate?: string;
+    gender?: Patient["gender"];
+    phone?: string;
+  }): Promise<string> {
+    const token = await this.accessToken();
+    const patient: Patient = {
+      resourceType: "Patient",
+      name: [{ given: [input.given], family: input.family }],
+      ...(input.birthDate ? { birthDate: input.birthDate } : {}),
+      ...(input.gender ? { gender: input.gender } : {}),
+      ...(input.phone ? { telecom: [{ system: "phone", value: input.phone }] } : {}),
+    };
+    const res = await fetch(`${this.settings.baseUrl}/fhir/R4/Patient`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/fhir+json",
+        Accept: "application/fhir+json",
+      },
+      body: JSON.stringify(patient),
+    });
+    if (!res.ok) {
+      throw new Error(`create Patient failed: ${res.status} ${await res.text()}`);
+    }
+    const created = (await res.json()) as Patient;
+    if (!created.id) throw new Error("create Patient returned no id");
+    return created.id;
   }
 
   /** All Patient ids in the project — for offline chart seeding. */

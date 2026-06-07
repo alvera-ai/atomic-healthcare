@@ -65,7 +65,10 @@ seed: ## Import the Synthea cohort → Medplum + Watchman (run `make synthea` fi
 	@bun run seed
 
 run-careops-agent: ## Launch the CareOps voice agent (config via env / idiomatic OAuth)
-	@bun run careops-agent
+	@bun run careops-agent dev
+
+careops-agent-download: ## One-time: fetch the agent's VAD / turn-detector model files
+	@bun run careops-agent download-files
 
 logs: ## Follow container logs
 	@$(COMPOSE) logs -f
