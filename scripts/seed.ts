@@ -251,7 +251,7 @@ async function findOrCreatePayer(
 export async function seedCoverage(
   medplum: MedplumClient,
   managedCareCount = 4,
-): Promise<{ managed: number; ffs: number }> {
+): Promise<{ managed: number; ffs: number; withPcp: number }> {
   // Clean slate so the split is exact and re-runs are idempotent.
   for (const c of await medplum.searchResources("Coverage", { _count: "200" })) {
     if (c.id) await medplum.deleteResource("Coverage", c.id);
@@ -272,21 +272,33 @@ export async function seedCoverage(
   const living = patients.filter((p) => !(p.deceasedDateTime || p.deceasedBoolean));
   const managedIds = new Set(living.slice(0, managedCareCount).map((p) => p.id));
 
+  // PCP on record: every managed-care patient + half of the fee-for-service patients
+  // (so some FFS patients have an assigned doctor and some don't — realistic variety).
+  const ffsPatients = patients.filter((p) => !managedIds.has(p.id));
+  const pcpIds = new Set<string | undefined>([
+    ...managedIds,
+    ...ffsPatients.slice(0, Math.floor(ffsPatients.length / 2)).map((p) => p.id),
+  ]);
+
   let managed = 0;
   let ffs = 0;
+  let withPcp = 0;
   let pcpIdx = 0;
   for (const p of patients) {
     const isManaged = managedIds.has(p.id);
     const payer = isManaged ? PAYERS.managed : PAYERS.ffs;
     const payerOrg = isManaged ? managedPayer : ffsPayer;
 
-    if (isManaged && practitioners.length > 0) {
+    if (pcpIds.has(p.id) && practitioners.length > 0) {
       const pcp = practitioners[pcpIdx % practitioners.length];
       pcpIdx += 1;
+      const nm = pcp?.name?.[0];
+      const display = `${nm?.given?.join(" ") ?? ""} ${nm?.family ?? ""}`.trim();
       await medplum.updateResource<Patient>({
         ...p,
-        generalPractitioner: [{ reference: `Practitioner/${pcp?.id}`, display: pcp?.name?.[0]?.family }],
+        generalPractitioner: [{ reference: `Practitioner/${pcp?.id}`, display }],
       });
+      withPcp += 1;
     }
 
     await medplum.createResource<Coverage>({
@@ -315,7 +327,7 @@ export async function seedCoverage(
     if (isManaged) managed += 1;
     else ffs += 1;
   }
-  return { managed, ffs };
+  return { managed, ffs, withPcp };
 }
 
 async function main(): Promise<void> {
@@ -355,7 +367,9 @@ async function main(): Promise<void> {
 
   // 4) Insurance: 4 living patients → managed care (with assigned PCP), rest → FFS.
   const coverage = await seedCoverage(medplum);
-  console.log(`  coverage → ${coverage.managed} managed care, ${coverage.ffs} fee-for-service`);
+  console.log(
+    `  coverage → ${coverage.managed} managed care, ${coverage.ffs} fee-for-service (${coverage.withPcp} with assigned PCP)`,
+  );
 
   // 5) Care templates so the provider app can book visits.
   const templates = await seedCareTemplates(medplum);
