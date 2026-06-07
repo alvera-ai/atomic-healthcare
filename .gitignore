@@ -33,3 +33,6 @@ tools/
 
 # os
 .DS_Store
+
+# Contract PDFs (fetched via make fetch-contracts)
+data/contracts/

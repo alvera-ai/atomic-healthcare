@@ -91,5 +91,56 @@ export function careopsTools() {
         return { created: true, patientId, note: "New patient — no chart history yet." };
       },
     }),
+
+    /** Insurance plan (managed care vs fee-for-service) for the verified patient. */
+    get_coverage: llm.tool({
+      description: "Get the patient's insurance: plan type (managed care vs fee-for-service), payer, and whether it's managed care.",
+      parameters: z.object({ patientId: z.string().describe("Verified Patient id.") }),
+      execute: async ({ patientId }) => {
+        const c = await medplum.getCoverage(patientId);
+        return c ?? { plan: "unknown", payer: "", managedCare: false };
+      },
+    }),
+
+    /** Find the earliest open appointment slot, optionally after an eligibility-verification window. */
+    find_earliest_appointment: llm.tool({
+      description:
+        "Find the earliest open appointment slot for a verified patient. Set earliestAfterDays to delay the window: 0 for an existing (already-verified) patient; for a NEW patient use the eligibility-verification turnaround — 5 days for managed care, 15 days for fee-for-service (default). Managed-care patients are matched to their assigned PCP's schedule.",
+      parameters: z.object({
+        patientId: z.string(),
+        earliestAfterDays: z.number().describe("Earliest the appointment may be, in days from today (0, 5, or 15)."),
+      }),
+      execute: async ({ patientId, earliestAfterDays }) => {
+        const cov = await medplum.getCoverage(patientId);
+        const practitionerId = cov?.managedCare ? await medplum.getPrimaryPractitionerId(patientId) : undefined;
+        const afterISO = new Date(Date.now() + Math.max(0, earliestAfterDays) * 86_400_000).toISOString();
+        const slot = await medplum.findEarliestSlot({ afterISO, practitionerId });
+        if (!slot) return { found: false, message: "No open slot in that window." };
+        return { found: true, slotId: slot.id, start: slot.start };
+      },
+    }),
+
+    /** Book a specific open slot. */
+    book_appointment: llm.tool({
+      description: "Book a specific open slot for the patient, using the slotId from find_earliest_appointment.",
+      parameters: z.object({ patientId: z.string(), slotId: z.string() }),
+      execute: async ({ patientId, slotId }) => {
+        const r = await medplum.bookAppointment(patientId, slotId);
+        return { booked: true, start: r.start, appointmentId: r.appointmentId };
+      },
+    }),
+
+    /** Managed-care guarantee: create an after-5pm overflow slot and book it. */
+    create_priority_appointment: llm.tool({
+      description:
+        "Managed-care guarantee for a SICK managed-care patient when find_earliest_appointment found nothing acceptable: create an extra after-5pm slot on the patient's PCP schedule and book it. Use only in that case.",
+      parameters: z.object({ patientId: z.string() }),
+      execute: async ({ patientId }) => {
+        const r = await medplum.createPrioritySlotAndBook(patientId);
+        return r
+          ? { booked: true, start: r.start, appointmentId: r.appointmentId }
+          : { booked: false, message: "No assigned PCP/schedule to add an overflow slot to." };
+      },
+    }),
   };
 }

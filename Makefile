@@ -1,4 +1,4 @@
-.PHONY: run-backing-services stop-backing-services ingest-knowledge build-identity-index run-careops-agent synthea seed logs status help
+.PHONY: run-backing-services stop-backing-services ingest-knowledge fetch-contracts build-identity-index run-careops-agent careops-agent-download synthea seed seed-moss logs status help
 
 # Backing services: Medplum (system of record) + Watchman (identity index).
 # PostgreSQL and Redis run natively on the host.
@@ -38,8 +38,18 @@ run-backing-services: ## Start Medplum + Watchman (PROFILE=mail adds the mail ca
 stop-backing-services: ## Stop and remove the containers
 	@$(COMPOSE) down
 
-ingest-knowledge: ## Load company knowledge into Moss (contracts + recent CMS judgements)
-	@bun run ingest-knowledge
+CONTRACT_URLS := \
+	https://interactives.commonwealthfund.org/medicaidmcdb/plans/FL_CQS_Final_Draft_2017_03-02-2017.pdf \
+	https://interactives.commonwealthfund.org/medicaidmcdb/contracts/FL1_Attachment_I-Scope_of_Services_2019-02-01.pdf \
+	https://interactives.commonwealthfund.org/medicaidmcdb/contracts/FL2_Attachment_II-Core_Contract_Provisions_2019-02-01.pdf \
+	https://interactives.commonwealthfund.org/medicaidmcdb/contracts/FL4_Exhibit_II_A-MMA_2019-02-01.pdf
+
+fetch-contracts: ## Download the Florida Medicaid managed-care contract PDFs → data/contracts/
+	@mkdir -p data/contracts
+	@cd data/contracts && for u in $(CONTRACT_URLS); do curl -sL -O "$$u" && echo "  downloaded $$(basename $$u)"; done
+
+ingest-knowledge: ## Parse the contracts via Unsiloed → Moss (run `make fetch-contracts` first)
+	@bun run ingest-contracts
 
 build-identity-index: ## Real data: FHIR export → Senzing (RECORD_ID = Patient id) → Watchman
 	@bun run build-identity-index

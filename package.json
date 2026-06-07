@@ -9,6 +9,7 @@
   "scripts": {
     "seed": "bun run scripts/seed.ts",
     "seed-moss": "bun run scripts/seed-moss.ts",
+    "ingest-contracts": "bun run scripts/ingest-contracts.ts",
     "careops-agent": "bun run examples/careops-agent/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
