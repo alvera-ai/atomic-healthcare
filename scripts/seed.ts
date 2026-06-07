@@ -19,7 +19,10 @@
 import { MedplumClient } from "@medplum/core";
 import type {
   Bundle,
+  Coverage,
+  Organization,
   Patient,
+  PlanDefinition,
   Practitioner,
   Schedule,
   Slot,
@@ -143,8 +146,11 @@ function upcomingWeekdays(days: number): Date[] {
   return out;
 }
 
-/** Create a Schedule for a practitioner and free 30-min slots, 9:00–12:00, next 10 weekdays. */
-async function enableScheduling(
+/** Clinic hours: morning 9:00–12:00 and afternoon 14:00–17:00 (30-min slots). */
+const CLINIC_HOURS: readonly number[] = [9, 10, 11, 14, 15, 16];
+
+/** Create a Schedule for a practitioner and free 30-min slots across clinic hours, next 10 weekdays. */
+export async function enableScheduling(
   medplum: MedplumClient,
   practitioner: Practitioner,
 ): Promise<number> {
@@ -156,7 +162,7 @@ async function enableScheduling(
   });
   let slots = 0;
   for (const day of upcomingWeekdays(10)) {
-    for (let hour = 9; hour < 12; hour++) {
+    for (const hour of CLINIC_HOURS) {
       for (const minute of [0, 30]) {
         const start = new Date(day);
         start.setHours(hour, minute, 0, 0);
@@ -173,6 +179,143 @@ async function enableScheduling(
     }
   }
   return slots;
+}
+
+/**
+ * Care templates — the provider app's "Create Visit" form REQUIRES a PlanDefinition
+ * ("Care template") to book. A minimal active PlanDefinition is enough: booking runs
+ * PlanDefinition/$apply (fine with no actions) and the charge-item step skips cleanly
+ * when billing extensions are absent. Idempotent (skips templates already present).
+ */
+const CARE_TEMPLATES: ReadonlyArray<readonly [name: string, title: string]> = [
+  ["new-patient-visit", "New Patient Visit"],
+  ["annual-wellness-visit", "Annual Wellness Visit"],
+  ["diabetes-followup", "Diabetes Management Follow-up"],
+  ["hypertension-followup", "Hypertension Follow-up"],
+  ["telehealth-checkin", "Telehealth Check-in"],
+];
+
+export async function seedCareTemplates(medplum: MedplumClient): Promise<number> {
+  let created = 0;
+  for (const [name, title] of CARE_TEMPLATES) {
+    const existing = await medplum.searchResources("PlanDefinition", { name });
+    if (existing.length > 0) continue;
+    await medplum.createResource<PlanDefinition>({
+      resourceType: "PlanDefinition",
+      status: "active",
+      name,
+      title,
+      type: { text: "Clinical Protocol" },
+      description: `${title} — care template for booking a visit.`,
+    });
+    created += 1;
+  }
+  return created;
+}
+
+/**
+ * Insurance — give every patient a Coverage. Deterministic split: the first
+ * `managedCareCount` LIVING patients get managed care (HMO) with an assigned primary
+ * care physician (Patient.generalPractitioner, round-robin across practitioners); the
+ * rest get fee-for-service (Medicare). Wipes existing Coverage first so re-running is
+ * idempotent and the 4/20 split is exact.
+ */
+const PAYERS = {
+  managed: { ref: "sunshine-health", name: "Sunshine Health Plan", code: "HMO", typeText: "Managed Care (HMO)" },
+  ffs: { ref: "medicare-ffs", name: "Medicare", code: "FFS", typeText: "Fee-for-Service" },
+} as const;
+
+async function findOrCreatePayer(
+  medplum: MedplumClient,
+  payer: { ref: string; name: string },
+): Promise<Organization> {
+  const found = await medplum.searchResources("Organization", {
+    identifier: `http://atomic.health/payer|${payer.ref}`,
+  });
+  if (found[0]) return found[0];
+  return medplum.createResource<Organization>({
+    resourceType: "Organization",
+    active: true,
+    name: payer.name,
+    identifier: [{ system: "http://atomic.health/payer", value: payer.ref }],
+    type: [
+      {
+        coding: [
+          { system: "http://terminology.hl7.org/CodeSystem/organization-type", code: "pay", display: "Payer" },
+        ],
+      },
+    ],
+  });
+}
+
+export async function seedCoverage(
+  medplum: MedplumClient,
+  managedCareCount = 4,
+): Promise<{ managed: number; ffs: number }> {
+  // Clean slate so the split is exact and re-runs are idempotent.
+  for (const c of await medplum.searchResources("Coverage", { _count: "200" })) {
+    if (c.id) await medplum.deleteResource("Coverage", c.id);
+  }
+
+  const managedPayer = await findOrCreatePayer(medplum, PAYERS.managed);
+  const ffsPayer = await findOrCreatePayer(medplum, PAYERS.ffs);
+
+  const patients = (await medplum.searchResources("Patient", { _count: "200" })).sort((a, b) =>
+    (a.id ?? "").localeCompare(b.id ?? ""),
+  );
+  // Only real clinicians can be a PCP — Synthea practitioners carry a us-npi
+  // identifier; the bootstrap "Medplum Admin" Practitioner has none, so it's excluded.
+  const practitioners = (await medplum.searchResources("Practitioner", { _count: "100" })).filter((p) =>
+    p.identifier?.some((i) => i.system === "http://hl7.org/fhir/sid/us-npi"),
+  );
+
+  const living = patients.filter((p) => !(p.deceasedDateTime || p.deceasedBoolean));
+  const managedIds = new Set(living.slice(0, managedCareCount).map((p) => p.id));
+
+  let managed = 0;
+  let ffs = 0;
+  let pcpIdx = 0;
+  for (const p of patients) {
+    const isManaged = managedIds.has(p.id);
+    const payer = isManaged ? PAYERS.managed : PAYERS.ffs;
+    const payerOrg = isManaged ? managedPayer : ffsPayer;
+
+    if (isManaged && practitioners.length > 0) {
+      const pcp = practitioners[pcpIdx % practitioners.length];
+      pcpIdx += 1;
+      await medplum.updateResource<Patient>({
+        ...p,
+        generalPractitioner: [{ reference: `Practitioner/${pcp?.id}`, display: pcp?.name?.[0]?.family }],
+      });
+    }
+
+    await medplum.createResource<Coverage>({
+      resourceType: "Coverage",
+      status: "active",
+      type: {
+        coding: [{ system: "http://terminology.hl7.org/CodeSystem/v3-ActCode", code: payer.code, display: payer.typeText }],
+        text: payer.typeText,
+      },
+      beneficiary: { reference: `Patient/${p.id}` },
+      subscriber: { reference: `Patient/${p.id}` },
+      subscriberId: `${payer.ref}-${(p.id ?? "").slice(0, 8)}`,
+      relationship: {
+        coding: [{ system: "http://terminology.hl7.org/CodeSystem/subscriber-relationship", code: "self" }],
+      },
+      payor: [{ reference: `Organization/${payerOrg.id}`, display: payerOrg.name }],
+      period: { start: "2026-01-01" },
+      class: [
+        {
+          type: { coding: [{ system: "http://terminology.hl7.org/CodeSystem/coverage-class", code: "plan" }] },
+          value: payer.ref,
+          name: payer.name,
+        },
+      ],
+    });
+    if (isManaged) managed += 1;
+    else ffs += 1;
+  }
+  return { managed, ffs };
 }
 
 async function main(): Promise<void> {
@@ -210,7 +353,15 @@ async function main(): Promise<void> {
     console.log(`  scheduled ${nm?.given?.join(" ") ?? ""} ${nm?.family ?? ""} → ${n} slots`);
   }
 
-  // 4) Emit the Watchman identity file (Senzing JSONL, RECORD_ID = Patient id).
+  // 4) Insurance: 4 living patients → managed care (with assigned PCP), rest → FFS.
+  const coverage = await seedCoverage(medplum);
+  console.log(`  coverage → ${coverage.managed} managed care, ${coverage.ffs} fee-for-service`);
+
+  // 5) Care templates so the provider app can book visits.
+  const templates = await seedCareTemplates(medplum);
+  console.log(`  care templates → ${templates} created`);
+
+  // 6) Emit the Watchman identity file (Senzing JSONL, RECORD_ID = Patient id).
   const living = seeded.filter((p) => !p.deceased);
   mkdirSync("seed-output", { recursive: true });
   writeFileSync(OUT_JSONL, `${living.map(senzingLine).join("\n")}\n`, "utf8");
@@ -219,10 +370,18 @@ async function main(): Promise<void> {
   console.log(`patients imported : ${seeded.length} (${living.length} living)`);
   console.log(`practitioners     : ${practitioners.length} (each with a schedule)`);
   console.log(`slots created     : ${totalSlots}`);
+  console.log(`coverage          : ${coverage.managed} managed care + ${coverage.ffs} FFS`);
+  console.log(`care templates    : ${CARE_TEMPLATES.length} total`);
   console.log(`watchman file     : ${OUT_JSONL} (${living.length} records)`);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+// Run main() only when invoked directly (`bun run scripts/seed.ts`); importing this
+// module (e.g. to apply just coverage/templates to a live DB) does not re-import.
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
+
+export { authenticate };
