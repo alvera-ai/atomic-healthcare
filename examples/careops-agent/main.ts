@@ -22,7 +22,7 @@ import {
 import * as livekit from "@livekit/agents-plugin-livekit";
 import * as silero from "@livekit/agents-plugin-silero";
 import dotenv from "dotenv";
-import { AGENT_NAME, CareOpsAgent } from "./agent.ts";
+import { CareOpsAgent } from "./agent.ts";
 
 dotenv.config();
 
@@ -55,9 +55,12 @@ export default defineAgent<ProcessUserData>({
   },
 });
 
+// No agentName → the worker auto-joins every room in the project (simplest for
+// Playground testing). Set LIVEKIT_AGENT_NAME to switch to named explicit dispatch.
+const agentName = process.env.LIVEKIT_AGENT_NAME;
 cli.runApp(
   new ServerOptions({
     agent: fileURLToPath(import.meta.url),
-    agentName: process.env.LIVEKIT_AGENT_NAME ?? AGENT_NAME,
+    ...(agentName ? { agentName } : {}),
   }),
 );
