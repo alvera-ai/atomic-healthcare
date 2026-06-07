@@ -32,12 +32,21 @@ async function main(): Promise<void> {
   const { indexName, docs } = await medplum.getChartForMoss(patientId);
 
   console.log(`\nMoss index : ${indexName}`);
-  console.log(`documents  : ${docs.length}\n`);
+  console.log(`documents  : ${docs.length} (one per FHIR resource)\n`);
+
+  // Summary by resource type (printing thousands of raw docs is useless).
+  const byType: Record<string, number> = {};
   for (const d of docs) {
-    console.log(`──────────────────────────────────────────────────────────`);
-    console.log(`id: ${d.id}   [${d.metadata.category}, ${d.metadata.count} items]`);
-    console.log(d.text);
-    console.log();
+    const t = d.metadata.resource_type ?? "?";
+    byType[t] = (byType[t] ?? 0) + 1;
+  }
+  console.log("by resource type:");
+  for (const [type, n] of Object.entries(byType).sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${type.padEnd(24)} ${n}`);
+  }
+  console.log("\nsample docs:");
+  for (const d of docs.slice(0, 3)) {
+    console.log(`  ${d.id}  →  ${d.text.slice(0, 100)}…`);
   }
 
   if (write) {
