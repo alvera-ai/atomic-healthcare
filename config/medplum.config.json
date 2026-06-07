@@ -5,6 +5,8 @@
   "storageBaseUrl": "http://localhost:8103/storage/",
   "binaryStorage": "file:./binary/",
   "allowedOrigins": "*",
+  "maxJsonSize": "128mb",
+  "maxBatchSize": "128mb",
   "database": {
     "host": "host.docker.internal",
     "port": 5432,

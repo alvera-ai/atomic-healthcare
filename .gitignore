@@ -28,5 +28,8 @@ audit/
 seed-output/
 synthea-output/
 
+# downloaded tooling (synthea jar, etc.)
+tools/
+
 # os
 .DS_Store

@@ -1,0 +1,2 @@
+provider_num,npi,name,address,city,state,zip,fips_county,lat,lon,phone,provider_type_code,category,emergency,upin,pin,region_code,bed_count,clia_lab_number
+"101936","1801826268","TRENTON MEDICAL CLINIC","PO BOX 640 911 SOUTH MAIN STREET","TRENTON",FL,"326933239","041",29.6132942,-82.8176203,"3524632374","00-04","21-01",true,"101936","77513","04",,

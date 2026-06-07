@@ -5,8 +5,8 @@
     "": {
       "name": "atomic-healthcare",
       "dependencies": {
-        "@medplum/core": "^4.0.0",
-        "@medplum/fhirtypes": "^4.0.0",
+        "@medplum/core": "^5.1.0",
+        "@medplum/fhirtypes": "^5.1.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -15,9 +15,9 @@
     },
   },
   "packages": {
-    "@medplum/core": ["@medplum/core@4.5.2", "", { "peerDependencies": { "pdfmake": "^0.2.5" }, "optionalPeers": ["pdfmake"] }, "sha512-i6z32bWMY6OeJpbjGrq6pU+aYdIRPexazXUCh4+vHCo6/sc/SIKaT29NWDAhpZ/mDDB4P7ooPYdmjb5fOSYarw=="],
+    "@medplum/core": ["@medplum/core@5.1.15", "", { "peerDependencies": { "pdfmake": "^0.2.5" }, "optionalPeers": ["pdfmake"] }, "sha512-bp6TbAN40C3u9/D9zD2Xr5FCuT5a0trUpgS0yMIs9pS8ZnrX7bZdE1xua63GLgQAi9qo02IOdwab4oZIva3inw=="],
 
-    "@medplum/fhirtypes": ["@medplum/fhirtypes@4.5.2", "", {}, "sha512-qngMVtP1enmIfNifXtHxSyLy6p5gmCd0FHm3Xg2sBRuDLPYkCHs0T6vWTp/nWwSmd+jHnxqAITK7ibyCqwCR8g=="],
+    "@medplum/fhirtypes": ["@medplum/fhirtypes@5.1.15", "", {}, "sha512-cGQUzdT6wh1McOq6jJocYW+XPjW2ZFvD3cDTfQqHiIPRifEcKebOrjp9dN2x7nZtzoxvfF2vejDjZ+u9lVooAw=="],
 
     "@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
 

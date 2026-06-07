@@ -7,16 +7,13 @@
   "module": "src/index.ts",
   "private": true,
   "scripts": {
-    "cli": "bun run src/cli.ts",
-    "medplum:up": "docker compose -f infra/docker-compose.yml up -d",
-    "medplum:down": "docker compose -f infra/docker-compose.yml down",
+    "seed": "bun run scripts/seed.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "build": "bun build src/cli.ts --compile --outfile dist/atomic"
+    "test": "bun test"
   },
   "dependencies": {
-    "@medplum/core": "^4.0.0",
-    "@medplum/fhirtypes": "^4.0.0"
+    "@medplum/core": "^5.1.0",
+    "@medplum/fhirtypes": "^5.1.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

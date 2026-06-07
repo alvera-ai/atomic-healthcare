@@ -1,0 +1,2 @@
+provider_num,npi,name,address,city,state,zip,fips_county,lat,lon,phone,provider_type_code,category,emergency,upin,pin,region_code,bed_count,clia_lab_number
+"102687","1386750164","ARA AVENTUREA, LLC DBA FRESENIUS KIDNEY CARE AVENT","19056 NE 29TH AVE","AVENTURA",FL,"331802802","086",25.9518845,-80.1445907,"3056929006","00-03","09-01",true,,,"04",,

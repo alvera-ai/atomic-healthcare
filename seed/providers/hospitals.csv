@@ -1,0 +1,2 @@
+provider_num,npi,name,address,city,state,zip,fips_county,lat,lon,phone,provider_type_code,category,emergency,upin,pin,region_code,bed_count,clia_lab_number
+"102001","1174523815","SELECT SPECIALTY HOSPITAL-MIAMI","955 NW 3RD STREET 8TH FLOOR","MIAMI",FL,"331281274","086",25.7741728,-80.19362,"3054165700","00-09","01-02",false,,,"04",47,"10D1005955"

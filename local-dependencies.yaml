@@ -9,12 +9,20 @@
 
 services:
   # Identity index — fuzzy "spoken name → Patient id". Peer-reviewed sanctions
-  # matcher repurposed as an EMPI.
+  # matcher repurposed as an EMPI. Loads NO government lists; instead ingests our
+  # patients as a Senzing-JSONL file (RECORD_ID = Patient id). The jsonl is emitted
+  # by `make seed`. See config/watchman.yml.
   watchman:
     image: moov/watchman:v0.61.1
     restart: unless-stopped
     ports:
       - "8084:8084"
+      - "9094:9094"
+    environment:
+      APP_CONFIG: /app/config.yml
+    volumes:
+      - ./config/watchman.yml:/app/config.yml:ro
+      - ./seed-output/patients.jsonl:/data/patients.jsonl:ro
 
   # System of record — FHIR R4. Config is a mounted file (Medplum's canonical
   # local setup); it points DB + Redis at the host's native Postgres/Redis via

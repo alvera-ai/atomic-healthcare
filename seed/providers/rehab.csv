@@ -1,0 +1,2 @@
+provider_num,npi,name,address,city,state,zip,fips_county,lat,lon,phone,provider_type_code,category,emergency,upin,pin,region_code,bed_count,clia_lab_number
+"684825","1114077666","KEYSTONE HEALTHCARE AND REHABILITATION SERVICES IN","2040 NE COACHMAN RD","CLEARWATER",FL,"337652610","103",27.9789318,-82.7360972,"7277965478","00-02","14-01",true,,,"04",,

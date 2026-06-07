@@ -1,0 +1,35 @@
+# Watchman config — repurposed as a patient identity index (EMPI), not sanctions.
+# We load NO government lists (IncludedLists empty) and instead ingest our own
+# patients as a Senzing-JSONL file. Mirrors the atomic-fi custom-list pattern.
+# Mounted to /app/config.yml; selected via APP_CONFIG. Verified for moov/watchman:v0.61.1.
+Watchman:
+  Servers:
+    BindAddress: ":8084"
+    AdminAddress: ":9094"
+
+  Telemetry:
+    ServiceName: "watchman"
+
+  Webui:
+    BasePath: "/"
+
+  Download:
+    RefreshInterval: "12h"
+    InitialDataDirectory: "/data"
+    # Patient EMPI only — do not download OFAC/CSL/etc.
+    IncludedLists: []
+
+  Search:
+    Goroutines:
+      Default: 10
+      Min: 1
+      Max: 25
+
+  # Our patients, ingested from /data/patients.jsonl (key must match the basename).
+  Ingest:
+    Files:
+      patients:
+        Format: "senzing-jsonl"
+
+  Geocoding:
+    Enabled: false
