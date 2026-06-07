@@ -31,8 +31,10 @@ export function careopsTools() {
         address: z.string().optional().describe("Street address — a tie-breaker if confidence is low."),
       }),
       execute: async ({ name, birthDate, phone, address }) => {
+        console.error(`[resolve_patient] →`, { name, birthDate, phone, address });
         const matches = await watchman.resolvePatient({ name, birthDate, phone, address });
         const top = matches[0];
+        console.error(`[resolve_patient] ←`, top ? `${top.name} ${(top.confidence * 100).toFixed(0)}%` : "no match");
         if (!top) {
           return { matched: false, message: "No patient found. Offer to register the caller as a new patient." };
         }

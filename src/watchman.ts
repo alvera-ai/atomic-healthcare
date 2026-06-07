@@ -40,7 +40,9 @@ export class WatchmanClient {
     if (q.phone) params.set("phone", q.phone);
     if (q.address) params.set("address", q.address);
 
-    const res = await fetch(`${this.settings.baseUrl}/v2/search?${params.toString()}`);
+    const res = await fetch(`${this.settings.baseUrl}/v2/search?${params.toString()}`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) {
       throw new Error(`Watchman search failed: ${res.status} ${await res.text()}`);
     }
