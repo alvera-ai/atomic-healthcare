@@ -22,7 +22,10 @@ services:
       APP_CONFIG: /app/config.yml
     volumes:
       - ./config/watchman.yml:/app/config.yml:ro
-      - ./seed-output/patients.jsonl:/data/patients.jsonl:ro
+      # Bare name (no extension): Watchman matches Download.Senzing's SourceList
+      # to a file whose basename equals it exactly. SourceList: atomic_patients
+      # → /data/atomic_patients. The file is Senzing-JSONL emitted by `make seed`.
+      - ./seed-output/patients.jsonl:/data/atomic_patients:ro
 
   # System of record — FHIR R4. Config is a mounted file (Medplum's canonical
   # local setup); it points DB + Redis at the host's native Postgres/Redis via

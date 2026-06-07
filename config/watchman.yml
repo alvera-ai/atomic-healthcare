@@ -19,17 +19,23 @@ Watchman:
     # Patient EMPI only — do not download OFAC/CSL/etc.
     IncludedLists: []
 
+    # Our patients are loaded as an in-memory Senzing list — the SAME pathway
+    # Watchman uses for OFAC/UN CSL and that atomic-fi uses to onboard a country.
+    # NOT the Ingest.Files path: that one is Postgres-backed (NewRepository falls
+    # back to an in-memory MockRepository when no Database is configured, and that
+    # repo is never wired into the search index → "0 entities", which is the bug
+    # we hit). With no Location, Watchman matches each SourceList to a file in
+    # InitialDataDirectory whose *basename equals the SourceList exactly*
+    # (download/client.go GetFiles → EqualFold(filepath.Base(file), name)).
+    # So the mount target MUST be /data/atomic_patients (bare, no extension).
+    Senzing:
+      - SourceList: atomic_patients
+
   Search:
     Goroutines:
       Default: 10
       Min: 1
       Max: 25
-
-  # Our patients, ingested from /data/patients.jsonl (key must match the basename).
-  Ingest:
-    Files:
-      patients:
-        Format: "senzing-jsonl"
 
   Geocoding:
     Enabled: false
