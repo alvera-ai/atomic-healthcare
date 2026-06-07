@@ -68,6 +68,26 @@ flowchart TB
   X4["📵 Only ~20% use portals<br/>→ the other 80% call by phone"]
 ```
 
+## Key innovations
+
+What made all of this possible:
+
+- 🪪 **Ultra-low-latency, HIPAA-compliant patient matcher.** Identity resolves
+  against an **in-memory Watchman/Senzing** index (fuzzy match, every field
+  optional, ≥90% gate) in **single-digit milliseconds** — and it runs **next to the
+  record**, so PHI never leaves the environment to identify a caller.
+- 🔒 **Secure agent ↔ EMR communication.** The agent never speaks raw FHIR. It calls
+  **thin in-process wrappers** with a deliberately **limited API**, authenticated by
+  **idiomatic client-credentials OAuth** (`@medplum/core` refreshes its own bearer)
+  and bounded server-side by Medplum **AccessPolicy** — the wrapper surface *is* the
+  safety boundary.
+- 🤖 **Extends to RPA via CLI.** The same wrappers are plain functions, so they're
+  drivable from the command line — a path to automate **legacy EMRs that have no
+  modern API** the way a human clicks through them, without changing the agent.
+- 📶 **Works on the edge.** All TypeScript, in-process, **VAD-only** turn-taking (no
+  heavy ONNX model required) — the whole worker runs **alongside the record on
+  constrained, on-prem hardware**, not a cloud SaaS the legacy EMR would reject.
+
 ## Architecture
 
 ```mermaid
