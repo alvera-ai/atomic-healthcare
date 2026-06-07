@@ -150,6 +150,9 @@ function upcomingWeekdays(days: number): Date[] {
 /** Clinic hours: morning 9:00–12:00 and afternoon 14:00–17:00 (30-min slots). */
 const CLINIC_HOURS: readonly number[] = [9, 10, 11, 14, 15, 16];
 
+/** Upcoming weekdays of availability to seed (≥ 1 month, so new-patient block-outs land on real slots). */
+const SCHEDULE_DAYS = 30;
+
 /** Create a Schedule for a practitioner and free 30-min slots across clinic hours, next 10 weekdays. */
 export async function enableScheduling(
   medplum: MedplumClient,
@@ -162,7 +165,7 @@ export async function enableScheduling(
     comment: "Atomic Healthcare demo availability",
   });
   let slots = 0;
-  for (const day of upcomingWeekdays(10)) {
+  for (const day of upcomingWeekdays(SCHEDULE_DAYS)) {
     for (const hour of CLINIC_HOURS) {
       for (const minute of [0, 30]) {
         const start = new Date(day);
