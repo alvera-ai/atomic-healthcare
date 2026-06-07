@@ -95,29 +95,42 @@ and logs the transcript.
 
 ---
 
-## Eval 3 — New patient, FFS → register, then block out the verification window
+## Eval 3 — New patient, FFS → register, then block out the benchmark verification window
 
 **Caller:** a name **not** in the cohort, e.g. *"Marcus Webb, May 20th 1980,
-555-018-2244"*, who says they have **Medicare** (fee-for-service).
+555-018-2244"*, who states a payer when asked.
 
-**Setup:** none — slots span ~6 weeks, so +15 days has availability.
+**Setup:** none — slots span ~6 weeks, so any benchmark window (0–15 days) has availability.
+The `prior-auth-benchmarks` Moss index must be seeded once: `make seed-benchmarks`.
 
 **Script:** *"Hi, my name's Marcus Webb, born May 20th 1980."* → (agent can't find
 a record, asks for more, still no match) → agrees to register → gives phone →
-when asked, *"I have Medicare."*
+when asked, names an insurance. The block-out is **derived from that payer**, so the
+expected window depends on what they say:
+
+| Caller says | Matched benchmark | Block-out |
+|-------------|-------------------|-----------|
+| "Medicare" (Original) | Medicare FFS — real-time HETS verification | **≈7 days** |
+| "Aetna" / "Florida Blue" / "United" | commercial — manual PA | **≈10 days** |
+| "straight Medicaid" | Medicaid FFS — manual, state-dependent | **≈14 days** |
+| "self pay" / "no insurance" | nothing to verify | **0 days** |
+| (declines / unsure) → agent passes `"unknown"` | conservative fallback | **≈15 days** |
 
 **Expected agent behavior**
 1. `resolve_patient` → **no match** after a tie-breaker → treats as **NEW patient**.
 2. `create_patient` → new Patient created in Medplum.
-3. Asks insurance → Medicare = **fee-for-service** → block-out **≈15 days**.
-4. `find_earliest_appointment(patientId, 15)` then `book_appointment`, explaining
-   *"because we need to verify your new coverage first — about 15 days — the earliest
-   we can see you is <date>."*
+3. Asks insurance → calls **`get_payer_turnaround(insuranceName)`** → returns the
+   matched payer + `blockOutDays` (see table).
+4. `find_earliest_appointment(patientId, blockOutDays)` then `book_appointment`,
+   explaining *"because we need to verify your <payer> coverage first — about N days —
+   the earliest we can see you is <date>."*
 5. On hangup → `Communication` written to the **new** patient's chart.
 
-**PASS if:** a new `Patient` exists, the offered appointment is **≥15 days out**
-(or the agent correctly explains the 15-day verification wait if no slot exists that
-far in the demo data), and the transcript `Communication` is on the new chart.
+**PASS if:** a new `Patient` exists, the agent calls `get_payer_turnaround` and the
+offered appointment is **≥ the benchmark window** for the stated payer (or it correctly
+explains that wait), and the transcript `Communication` is on the new chart. The point
+of this eval is that the block-out is **payer-specific** (Medicare ≈7d ≠ Medicaid ≈14d),
+not a flat number.
 
 **Known gap:** the new patient is **not** in Watchman until a re-ingest, so a second
 call won't resolve them yet (documented; deferred).
@@ -130,7 +143,7 @@ call won't resolve them yet (documented; deferred).
 |---|----------|----------|---------------|----------------|---------------|
 | 1 | Managed-care sick | ≥0.90 | SICK | **overflow** after-5pm slot | ✓ |
 | 2 | Existing routine | ≥0.90 | not sick | routine slot / recommendation | ✓ |
-| 3 | New FFS | no match → register | n/a (new) | book **≥15 days** out | ✓ (new chart) |
+| 3 | New FFS | no match → register | n/a (new) | `get_payer_turnaround` → book **≥ payer benchmark** (Medicare ≈7d, Medicaid ≈14d, unknown ≈15d) | ✓ (new chart) |
 
 ---
 

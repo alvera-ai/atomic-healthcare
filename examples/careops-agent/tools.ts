@@ -11,6 +11,8 @@ import { MossClient, mossSettingsFromEnv } from "../../src/moss.ts";
 import { WatchmanClient, watchmanSettingsFromEnv } from "../../src/watchman.ts";
 
 const CONFIDENCE_GATE = 0.9;
+const BENCHMARKS_INDEX = "prior-auth-benchmarks";
+const DEFAULT_BLOCK_OUT_DAYS = 15; // conservative fallback if no benchmark matches
 
 /** Shared per-call state — lets main.ts write the transcript to the right patient on hangup. */
 export interface CallState {
@@ -109,10 +111,39 @@ export function careopsTools(callState: CallState = {}) {
       },
     }),
 
+    /** Match a new patient's stated insurance to global benchmarks → block-out days. */
+    get_payer_turnaround: llm.tool({
+      description:
+        "For a NEW patient, look up how long their stated insurance typically takes to verify/authorize, by fuzzy-matching the spoken payer name against global payer benchmarks. " +
+        "Returns the matched payer and a recommended block-out window in days — feed that number to find_earliest_appointment(patientId, earliestAfterDays). " +
+        "Use this instead of guessing the window. If the caller gives no insurance, pass 'unknown'.",
+      parameters: z.object({
+        insuranceName: z.string().describe("The insurance/payer the caller stated, e.g. 'Medicare', 'Aetna', 'Florida Blue', 'self pay'. Pass 'unknown' if not given."),
+      }),
+      execute: async ({ insuranceName }) => {
+        if (!loaded.has(BENCHMARKS_INDEX)) {
+          await moss.loadIndex(BENCHMARKS_INDEX);
+          loaded.add(BENCHMARKS_INDEX);
+        }
+        const hits = await moss.query(BENCHMARKS_INDEX, insuranceName, 3);
+        const top = hits[0];
+        // block_out_days lives in the doc text ("Block-out window: about N days"); parse it.
+        const m = top?.text.match(/Block-out window:\s*(?:about\s*)?(\d+)\s*days?/i);
+        const blockOutDays = m ? Number(m[1]) : DEFAULT_BLOCK_OUT_DAYS;
+        const matchedPayer = top?.text.match(/Payer:\s*([^.\n]+)/i)?.[1]?.trim();
+        return {
+          matchedPayer: matchedPayer ?? "unknown",
+          blockOutDays,
+          basis: top ? top.text : "No benchmark matched — using a conservative fee-for-service window.",
+          note: `Block out about ${blockOutDays} days for ${matchedPayer ?? "this payer"} to verify coverage, then call find_earliest_appointment(patientId, ${blockOutDays}).`,
+        };
+      },
+    }),
+
     /** Find the earliest open appointment slot, optionally after an eligibility-verification window. */
     find_earliest_appointment: llm.tool({
       description:
-        "Find the earliest open appointment slot for a verified patient. Set earliestAfterDays to delay the window: 0 for an existing (already-verified) patient; for a NEW patient use the eligibility/authorization turnaround — 7 days for managed care (FL contract standard-authorization SLA), 15 days for fee-for-service. Managed-care patients are matched to their assigned PCP's schedule.",
+        "Find the earliest open appointment slot for a verified patient. Set earliestAfterDays to delay the window: 0 for an existing (already-verified) patient; for a NEW patient use the eligibility/authorization turnaround — 7 days for managed care (FL contract standard-authorization SLA), otherwise the blockOutDays from get_payer_turnaround for their stated insurance. Managed-care patients are matched to their assigned PCP's schedule.",
       parameters: z.object({
         patientId: z.string(),
         earliestAfterDays: z.number().describe("Earliest the appointment may be, in days from today (0, 5, or 15)."),

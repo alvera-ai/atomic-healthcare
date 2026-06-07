@@ -1,4 +1,4 @@
-.PHONY: run-backing-services stop-backing-services ingest-knowledge fetch-contracts build-identity-index run-careops-agent careops-agent-download synthea seed seed-moss logs status help
+.PHONY: run-backing-services stop-backing-services ingest-knowledge fetch-contracts build-identity-index run-careops-agent careops-agent-download synthea seed seed-moss seed-benchmarks logs status help
 
 # Backing services: Medplum (system of record) + Watchman (identity index).
 # PostgreSQL and Redis run natively on the host.
@@ -50,6 +50,9 @@ fetch-contracts: ## Download the Florida Medicaid managed-care contract PDFs →
 
 ingest-knowledge: ## Parse the contracts via Unsiloed → Moss (run `make fetch-contracts` first)
 	@bun run ingest-contracts
+
+seed-benchmarks: ## Seed global payer eligibility/auth turnaround benchmarks → Moss prior-auth-benchmarks
+	@bun run seed-benchmarks
 
 build-identity-index: ## Real data: FHIR export → Senzing (RECORD_ID = Patient id) → Watchman
 	@bun run build-identity-index
