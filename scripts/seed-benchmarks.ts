@@ -142,12 +142,12 @@ const BENCHMARKS: Benchmark[] = [
       "Self-pay or uninsured — there is no third-party coverage to verify or authorize, so no verification delay is needed. Block-out window: 0 days (book the earliest available slot).",
   },
   {
-    payer: "Unknown / other commercial payer",
+    payer: "Unknown / obscure / known-slow payer",
     category: "default",
     blockOutDays: 15,
-    aliases: ["other", "not sure", "unknown", "i don't know", "private insurance", "employer insurance"],
+    aliases: ["other", "not sure", "unknown", "i don't know", "private insurance", "employer insurance", "small plan", "regional plan", "local insurance", "never heard of it", "obscure", "some other plan"],
     text:
-      "Fallback benchmark for an unrecognized or unstated commercial payer. With no payer-specific SLA, use a conservative fee-for-service verification window. Block-out window: about 15 days.",
+      "Worst-case fallback for an unrecognized, obscure, small/regional, or historically slow-to-verify payer, or when the caller can't name their insurance. With no reliable payer-specific SLA, use the most conservative verification window. This is the only entry that warrants the maximum delay; mainstream payers verify faster. Block-out window: about 15 days.",
   },
 ];
 
