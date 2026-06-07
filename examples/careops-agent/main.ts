@@ -54,7 +54,17 @@ export default defineAgent<ProcessUserData>({
       // background noise produces VAD blips but no real words, so this stops the
       // "resumed false interrupted speech" cut-offs that made replies inaudible.
       // turnDetection is left unset → the session auto-selects VAD (lightweight).
-      turnHandling: { interruption: { minWords: 2 } },
+      //
+      // preemptiveGeneration OFF: it starts the LLM reply BEFORE the caller's turn
+      // ends, so when the caller keeps talking (e.g. "that's correct, you got it
+      // right") the in-flight reply is aborted mid-tool-call — LiveKit then drops the
+      // tool's output ("function call missing the corresponding function output") and
+      // the LLM re-issues the SAME tool, looping until the call hangs. Generating only
+      // after the turn truly ends lets resolve_patient / booking calls complete cleanly.
+      turnHandling: {
+        interruption: { minWords: 2 },
+        preemptiveGeneration: { enabled: false },
+      },
     });
 
     // Shared per-call state: tools record the resolved patientId here so we can write
