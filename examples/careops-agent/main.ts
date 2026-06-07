@@ -19,7 +19,6 @@ import {
   ServerOptions,
   voice,
 } from "@livekit/agents";
-import * as livekit from "@livekit/agents-plugin-livekit";
 import * as silero from "@livekit/agents-plugin-silero";
 import dotenv from "dotenv";
 import { CareOpsAgent } from "./agent.ts";
@@ -38,16 +37,17 @@ export default defineAgent<ProcessUserData>({
 
     const session = new voice.AgentSession({
       vad,
-      stt: new inference.STT({ model: "deepgram/nova-3", language: "multi" }),
-      // NOTE: use a tool-capable model. The "*-chat-latest" variants are OpenAI's
-      // ChatGPT snapshots and do NOT support function calling — with tools attached
-      // the request hangs (agent stuck in "thinking"). gpt-4.1 supports tools.
+      // English STT — the EOU model is English-only ("multi" logged warnings and hurt
+      // digit recognition). gpt-4.1 supports tools (the "*-chat-latest" variants do
+      // NOT — with tools attached they hang). No heavy turn-detector model: on a
+      // resource-constrained machine its ONNX inference runs slower than realtime and
+      // makes the call choppy/"stuck"; Silero VAD handles turns and is far lighter.
+      stt: new inference.STT({ model: "deepgram/nova-3", language: "en" }),
       llm: new inference.LLM({ model: "openai/gpt-4.1" }),
       tts: new inference.TTS({
         model: "cartesia/sonic-3",
         voice: "9626c31c-bec5-4cca-baa8-f8ba9e84c8bc",
       }),
-      turnHandling: { turnDetection: new livekit.turnDetector.MultilingualModel() },
     });
 
     await session.start({ agent: new CareOpsAgent(), room: ctx.room });

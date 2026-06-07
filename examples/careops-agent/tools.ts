@@ -10,7 +10,7 @@ import { MedplumClient, settingsFromEnv } from "../../src/medplum.ts";
 import { MossClient, mossSettingsFromEnv } from "../../src/moss.ts";
 import { WatchmanClient, watchmanSettingsFromEnv } from "../../src/watchman.ts";
 
-const CONFIDENCE_GATE = 0.92;
+const CONFIDENCE_GATE = 0.9;
 
 export function careopsTools() {
   const medplum = new MedplumClient(settingsFromEnv());
@@ -19,11 +19,11 @@ export function careopsTools() {
   const loaded = new Set<string>(); // Moss indexes already pulled into memory this call
 
   return {
-    /** Identity gate — Watchman fuzzy match, trusted only at ≥ 92%. */
+    /** Identity gate — Watchman fuzzy match, trusted only at ≥ 90%. */
     resolve_patient: llm.tool({
       description:
         "Identify the caller from their spoken name and date of birth (optionally phone or address as tie-breakers). " +
-        "Returns the best match and a confidence between 0 and 1. Only trust a match when confidence is at least 0.92.",
+        "Returns the best match and a confidence between 0 and 1. Only trust a match when confidence is at least 0.90.",
       parameters: z.object({
         name: z.string().describe("Caller's full name."),
         birthDate: z.string().optional().describe("Date of birth, YYYY-MM-DD."),
@@ -46,7 +46,7 @@ export function careopsTools() {
           patientId: confident ? top.patientId : undefined,
           message: confident
             ? "Identity confirmed."
-            : "Below 0.92 confidence — ask for one more identifier (phone or address) and try again, or offer to register.",
+            : "Below 0.90 confidence — ask for one more identifier (phone or address) and try again, or offer to register.",
         };
       },
     }),
@@ -55,7 +55,7 @@ export function careopsTools() {
     get_patient_chart: llm.tool({
       description:
         "Look up facts from a verified patient's chart (active conditions, recent labs, medications) to judge how sick they are. " +
-        "Call only after resolve_patient confirms identity at ≥ 0.92.",
+        "Call only after resolve_patient confirms identity at ≥ 0.90.",
       parameters: z.object({
         patientId: z.string().describe("Verified Patient id from resolve_patient."),
         question: z.string().describe("What to look up, e.g. 'active chronic conditions and diagnoses'."),
