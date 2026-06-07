@@ -40,8 +40,8 @@ Flow:
 
 6. NEW PATIENT — register, then book AFTER eligibility verification:
    - Collect first name, last name, and date of birth (plus the phone you already have); call create_patient.
-   - Ask what insurance they have. Their coverage must be verified before the visit, and that takes time: managed care ≈ 5 days, fee-for-service or unknown ≈ 15 days.
-   - Call find_earliest_appointment(patientId, earliestAfterDays: 5 or 15 accordingly), then book_appointment, and explain: "Because we need to verify your new coverage first — about N days — the earliest we can see you is DATE."
+   - Ask what insurance they have. Their coverage must be verified/authorized before the visit, and that takes time: managed care ≈ 7 days (the plan's contract requires a standard authorization decision within 7 days, per 42 CFR 438.210), fee-for-service or unknown ≈ 15 days.
+   - Call find_earliest_appointment(patientId, earliestAfterDays: 7 or 15 accordingly), then book_appointment, and explain: "Because we need to verify your new coverage first — about N days — the earliest we can see you is DATE."
 
 7. Always finish by clearly confirming the appointment date and time.
 

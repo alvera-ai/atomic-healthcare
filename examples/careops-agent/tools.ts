@@ -112,7 +112,7 @@ export function careopsTools(callState: CallState = {}) {
     /** Find the earliest open appointment slot, optionally after an eligibility-verification window. */
     find_earliest_appointment: llm.tool({
       description:
-        "Find the earliest open appointment slot for a verified patient. Set earliestAfterDays to delay the window: 0 for an existing (already-verified) patient; for a NEW patient use the eligibility-verification turnaround — 5 days for managed care, 15 days for fee-for-service (default). Managed-care patients are matched to their assigned PCP's schedule.",
+        "Find the earliest open appointment slot for a verified patient. Set earliestAfterDays to delay the window: 0 for an existing (already-verified) patient; for a NEW patient use the eligibility/authorization turnaround — 7 days for managed care (FL contract standard-authorization SLA), 15 days for fee-for-service. Managed-care patients are matched to their assigned PCP's schedule.",
       parameters: z.object({
         patientId: z.string(),
         earliestAfterDays: z.number().describe("Earliest the appointment may be, in days from today (0, 5, or 15)."),
