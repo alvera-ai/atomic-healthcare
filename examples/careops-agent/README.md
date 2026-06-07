@@ -14,7 +14,7 @@ flowchart LR
   Caller(["📞 Patient"]) -- voice --> Agent["🎙️ careops-agent<br/>(TS · LiveKit)"]
   Agent -- who? --> WM["🪪 Watchman"]
   Agent -- chart R/W --> Med[("🗄️ Medplum")]
-  Agent -- contract / knowledge --> Moss["🧠 Moss"]
+  Agent -- "contract + in-call chart" --> Moss["🧠 Moss"]
   Med -. review / act .- Staff(["🧑 Clinic staff"])
 ```
 
@@ -55,8 +55,9 @@ sequenceDiagram
         A->>W: resolve_patient(phone + answers)
         W-->>A: candidates / one match
     end
-    A->>M: read chart (patient · coverage · appointments)
-    A->>S: get contract rule + HEDIS/CMS gotchas
+    A->>M: load chart (patient · coverage · appointments)
+    A->>S: index chart in Moss (for this call)
+    A->>S: query contract rule + HEDIS/CMS gotchas + chart
     Note over C,A: agent collects symptoms by voice;<br/>deterministic rules decide urgency
     alt routine
         A->>M: book appointment
@@ -65,6 +66,10 @@ sequenceDiagram
     end
     A->>M: write call summary
 ```
+
+Once the patient is resolved, the agent loads the chart from Medplum **once** and
+indexes it in Moss for the duration of the call, so later turns draw on it
+alongside the contract knowledge — no repeated round-trips to Medplum.
 
 ---
 
@@ -91,21 +96,22 @@ flowchart TB
 
   Med[("🗄️ Medplum<br/>FHIR system of record")]
   WM["🪪 Watchman<br/>identity"]
-  Moss["🧠 Moss<br/>contract knowledge base"]
+  Moss["🧠 Moss<br/>contract KB + in-call chart"]
 
   Caller -- voice --> Pipe
   Pipe -- calls --> Tools
   Tools --> MEDW -- "MedplumClient · Bearer" --> Med
   Tools --> WMW -- "POST /v2/search" --> WM
-  Tools --> MOSSW -- "loadIndex · query" --> Moss
+  Tools --> MOSSW -- "index · query" --> Moss
+  MEDW -. "chart → index for the call" .-> MOSSW
   Staff -. work in (provider / admin UI) .- Med
 ```
 
-Credentials are injected at launch — **no `.env` in source**. The Medplum wrapper
-authenticates `@medplum/core` with the **ClientApplication** (client-credentials);
-the SDK refreshes the bearer itself. Moss and Watchman use static keys. What the
-agent may do is bounded by the **wrapper's limited API** + Medplum's server-side
-**AccessPolicy**.
+Login is **idiomatic OAuth**: the Medplum wrapper authenticates `@medplum/core`
+with the **ClientApplication** (client-credentials) and the SDK refreshes the
+bearer itself. Config comes from the environment; Moss and Watchman use static
+keys. What the agent may do is bounded by the **wrapper's limited API** + Medplum's
+server-side **AccessPolicy**.
 
 ---
 
@@ -115,13 +121,14 @@ agent may do is bounded by the **wrapper's limited API** + Medplum's server-side
 flowchart LR
   P["caller phone #"] --> Q{one patient<br/>≥ 85%?}
   Q -- no --> Ask["ask one more:<br/>DOB · name · ZIP"] --> Q
-  Q -- yes --> Open["read that patient's chart"]
+  Q -- yes --> Open["load chart → index in Moss"]
   Q -- "can't resolve" --> Refuse["refuse · no record opens"]
 ```
 
 Watchman does the fuzzy "which person is this" match — not a plain FHIR
 `name + birthdate` search (which can return several people). Once Watchman returns
-one Patient id, the Medplum wrapper reads that chart by id.
+one Patient id, the Medplum wrapper loads that chart and the Moss wrapper indexes
+it for the call.
 
 ---
 
@@ -132,8 +139,8 @@ Each tool is a function whose body calls one thin wrapper:
 | Tool | Wrapper | Does |
 | --- | --- | --- |
 | `resolve_patient` | Watchman (HTTP) | caller → one Patient id (≥85%) or refuse |
-| `get_contract_context` | Moss (SDK) | contract / policy context + HEDIS/CMS gotchas |
-| `get_patient_context` | Medplum (`@medplum/core`) | read chart: patient, coverage, appointments |
+| `get_patient_context` | Medplum → Moss | load chart (patient, coverage, appointments) from Medplum and **index it in Moss for the call** |
+| `get_contract_context` | Moss (SDK) | contract / policy context + HEDIS/CMS gotchas (and the in-call chart) |
 | `find_available_appointments` | Medplum | open slots for a service / schedule |
 | `book_appointment` | Medplum | book the visit (staff-reviewable) |
 | `check_existing_booking` | Medplum | avoid duplicates (e.g. A1c care-gap) |
@@ -159,9 +166,11 @@ emergency human handoff · non-emergency nurse follow-up.
 
 ```bash
 # from the project root
-make run-backing-services            # Medplum :8103 · admin UI :3005 · Watchman :8084
-atomic-healthcare ingest-knowledge   # contracts + recent CMS judgements → Moss
-make seed                            # demo cohort → Medplum + Watchman (identity)
-make run-careops-agent               # launches this agent (secrets injected at launch)
+make run-backing-services    # Medplum :8103 · admin UI :3005 · Watchman :8084
+make ingest-knowledge        # contracts + recent CMS judgements → Moss
+make seed                    # demo cohort → Medplum + Watchman (identity)
+make run-careops-agent       # launch this agent (config via env / idiomatic OAuth)
 ```
 
+References: [livekit-examples/moss-hacker-starter](https://github.com/livekit-examples/moss-hacker-starter)
+· [AugurCognito/careops-voice-poc](https://github.com/AugurCognito/careops-voice-poc)

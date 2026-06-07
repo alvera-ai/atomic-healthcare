@@ -9,8 +9,7 @@ flowchart LR
   Caller(["📞 Patient"]) -- voice --> Agent["🎙️ AI agent (TS · LiveKit)"]
   Agent -- "who? (thin wrapper)" --> WM["🪪 Watchman"]
   Agent -- "record R/W (thin wrapper)" --> Med[("🗄️ Medplum")]
-  Agent -- "knowledge (thin wrapper)" --> Moss["🧠 Moss"]
-  CLI(["🔧 atomic-healthcare CLI"]) -. configure · load knowledge · launch .-> Agent
+  Agent -- "knowledge + in-call chart (thin wrapper)" --> Moss["🧠 Moss"]
   Med -. review / act .- Staff(["🧑 Clinic staff"])
 ```
 
@@ -42,13 +41,13 @@ flowchart TB
 | 🎙️ **careops-agent** | TypeScript · LiveKit Agents (WebRTC / SIP) · LiveKit Inference | talks to the patient; STT → LLM → TTS, no provider key |
 | 🗄️ **Medplum wrapper** | thin class on **`@medplum/core`** (`MedplumClient`), **in-process** | the FHIR system of record: verify/read patient, coverage, find & book appointments, tasks, call summaries — **only these operations**, not the whole API |
 | 🪪 **Watchman wrapper** | thin **HTTP** call, in-process | identity: caller → **one** Patient id (≥85% match) or refuse |
-| 🧠 **Moss wrapper** | thin class on **`@moss-dev/moss`** SDK, in-process | the knowledge base: contracts, past denials, recent CMS judgements, HEDIS gotchas (load index once, query locally) |
-| 🔧 **atomic-healthcare CLI** | TypeScript | operator toolkit: load knowledge → Moss, build the identity index → Watchman, seed, and launch the agent with secrets injected |
+| 🧠 **Moss wrapper** | thin class on **`@moss-dev/moss`** SDK, in-process | the knowledge base (contracts, past denials, CMS judgements, HEDIS gotchas) **and**, during a call, the resolved patient's chart — loaded from Medplum and **indexed in Moss for in-call retrieval** |
 
 No MCP and no Hono tool server: the agent calls the wrappers as plain function
-calls. `@medplum/core` handles the Medplum bearer (client-credentials) and its
-refresh for us. The real guard rails are the **wrapper's limited API** plus
-Medplum's server-side **AccessPolicy**. Swap any wrapper without touching the rest.
+calls. Login is **idiomatic OAuth** — `@medplum/core` authenticates with a
+client-credentials **ClientApplication** and refreshes the bearer itself. The real
+guard rails are the **wrapper's limited API** plus Medplum's server-side
+**AccessPolicy**. Swap any wrapper without touching the rest.
 
 ## What becomes possible
 
@@ -76,8 +75,8 @@ flowchart TB
   Caller(["📞 Patient"])
   Staff(["🧑 Clinic staff"])
 
-  subgraph Setup["SETUP — human, occasional (atomic-healthcare CLI)"]
-    Know["📚 load knowledge → Moss<br/>(contracts + CMS judgements)"]
+  subgraph Setup["SETUP — scripts, occasional"]
+    Know["📚 ingest knowledge → Moss<br/>(contracts + CMS judgements)"]
     Ident["🪪 build identity index → Watchman<br/>(FHIR → Senzing, by Patient id)"]
   end
 
@@ -93,22 +92,27 @@ flowchart TB
 
   Med[("🗄️ Medplum — FHIR")]
   WM["🪪 Watchman — identity"]
-  Moss["🧠 Moss — knowledge base"]
+  Moss["🧠 Moss — knowledge + in-call chart"]
 
   Know -- ingest --> Moss
   Ident -- ingest --> WM
   Caller -- voice --> AG
+  WMW -- "resolve ≥85%" --> WM
   MEDW -- "@medplum/core · Bearer" --> Med
-  WMW -- "HTTP" --> WM
+  MEDW -. "load chart → index for the call" .-> MOSSW
   MOSSW -- "SDK" --> Moss
   Staff -. work in (admin / provider UI) .- Med
 ```
 
-**Credentials** are injected at launch, never hardcoded and never a committed
-`.env` in source. `@medplum/core` authenticates with the Medplum **ClientApplication**
-(client-credentials) and refreshes the bearer itself; Moss and Watchman use static
-keys. What the agent may do is bounded by the **wrapper's limited API** and
-Medplum's server-side **AccessPolicy**.
+Once Watchman resolves the caller to one Patient, the agent loads that chart from
+Medplum and **indexes it in Moss for the duration of the call**, so the
+conversation can draw on it across turns.
+
+**Credentials** are configured via the environment (idiomatic OAuth): `@medplum/core`
+authenticates with the Medplum **ClientApplication** (client-credentials) and
+refreshes the bearer itself; Moss and Watchman use static keys. What the agent may
+do is bounded by the **wrapper's limited API** and Medplum's server-side
+**AccessPolicy**.
 
 ## Run it
 
@@ -118,14 +122,15 @@ First-time host setup (Redis password, `medplum` database) is in
 
 ```bash
 bun install
-make run-backing-services            # Medplum API :8103 · admin UI :3005 · Watchman :8084
-atomic-healthcare ingest-knowledge   # contracts + recent CMS judgements → Moss
-make seed                            # demo cohort → Medplum + Watchman (identity)
-make run-careops-agent               # launch the agent (secrets injected at launch)
+make run-backing-services    # Medplum API :8103 · admin UI :3005 · Watchman :8084
+make ingest-knowledge        # contracts + recent CMS judgements → Moss
+make seed                    # demo cohort → Medplum + Watchman (identity)
+make run-careops-agent       # launch the agent
 ```
 
-The clinician/front-office UI (Medplum's provider app) runs alongside for human
-review — see [`docs/getting-started.md`](./docs/getting-started.md).
+Config is via environment variables (`MEDPLUM_BASE_URL`, the ClientApplication
+id/secret, Moss + Watchman keys). The clinician/front-office UI (Medplum's provider
+app) runs alongside for human review — see [`docs/getting-started.md`](./docs/getting-started.md).
 
 ## Examples
 

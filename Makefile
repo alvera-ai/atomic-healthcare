@@ -17,16 +17,16 @@ stop-backing-services: ## Stop and remove the containers
 	@$(COMPOSE) down
 
 ingest-knowledge: ## Load company knowledge into Moss (contracts + recent CMS judgements)
-	@bun run cli ingest-knowledge
+	@bun run ingest-knowledge
 
 build-identity-index: ## Real data: FHIR export → Senzing (RECORD_ID = Patient id) → Watchman
-	@bun run cli build-identity-index
+	@bun run build-identity-index
 
 seed: ## Demo cohort: Synthea → Medplum (FHIR bundles) + Watchman (identity)
-	@bun run cli seed-patients
+	@bun run seed
 
-run-careops-agent: ## Launch the CareOps voice agent (secrets injected from ~/.alvera-ai profile)
-	@bun run cli run careops-agent
+run-careops-agent: ## Launch the CareOps voice agent (config via env / idiomatic OAuth)
+	@bun run careops-agent
 
 logs: ## Follow container logs
 	@$(COMPOSE) logs -f
