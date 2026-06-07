@@ -85,7 +85,7 @@ holds the transcript.
 2. `get_patient_chart` + `get_coverage` → chart benign, **not acutely sick**.
 3. Recommends a routine interval (generally healthy → **6–12 months**) with a short reason.
 4. `find_earliest_appointment` for a near-term slot and `book_appointment` (or, if
-   nothing falls in the recommended window given the ~2-week slot horizon, books the
+   nothing falls in the recommended 6–12 month window given the ~6-week slot horizon, books the
    earliest available / states the recommendation).
 5. On hangup → `Communication` written.
 
